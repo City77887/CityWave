@@ -115,7 +115,7 @@ const Layout = ({ isAdmin, onAdminClick, children }: { isAdmin: boolean, onAdmin
       </main>
       <footer className="bg-gray-900 border-t border-gray-800 mt-auto">
         <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
-          <p className="text-center text-gray-500 text-sm">© 2023 CityWave Events. Sva prava pridržana.</p>
+          <p className="text-center text-gray-500 text-sm">© 2025 CityWave Events. Sva prava pridržana.</p>
         </div>
       </footer>
     </div>
