@@ -22,14 +22,27 @@ import {
   Image as ImageIcon,
   Download,
   LogOut,
-  KeyRound
+  KeyRound,
+  UploadCloud,
+  Save
 } from 'lucide-react';
 import { EventData, Table, TableStatus, Reservation } from './types';
 import { INITIAL_EVENTS } from './constants';
 
+// Firebase imports
+import { db } from './firebase';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  setDoc, 
+  deleteDoc, 
+  updateDoc 
+} from 'firebase/firestore';
+
 // --- Utility Components ---
 
-const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'outline' }> = ({ 
+const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'outline' | 'success' }> = ({ 
   className, 
   variant = 'primary', 
   ...props 
@@ -41,6 +54,7 @@ const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant
     primary: "bg-indigo-600 text-white hover:bg-indigo-500 focus:ring-indigo-500 shadow-lg shadow-indigo-500/20",
     secondary: "bg-gray-800 text-gray-200 hover:bg-gray-700 focus:ring-gray-500 border border-gray-700",
     danger: "bg-red-600 text-white hover:bg-red-500 focus:ring-red-500 shadow-lg shadow-red-500/20",
+    success: "bg-green-600 text-white hover:bg-green-500 focus:ring-green-500 shadow-lg shadow-green-500/20",
     outline: "border border-gray-600 text-gray-300 hover:bg-gray-800 focus:ring-indigo-500"
   };
   
@@ -65,21 +79,6 @@ const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label?: st
     </div>
   </div>
 );
-
-// --- Storage Hook ---
-
-function useStickyState<T>(defaultValue: T, key: string): [T, React.Dispatch<React.SetStateAction<T>>] {
-  const [value, setValue] = useState<T>(() => {
-    const stickyValue = window.localStorage.getItem(key);
-    return stickyValue !== null ? JSON.parse(stickyValue) : defaultValue;
-  });
-
-  useEffect(() => {
-    window.localStorage.setItem(key, JSON.stringify(value));
-  }, [key, value]);
-
-  return [value, setValue];
-}
 
 // --- Views & Components ---
 
@@ -265,7 +264,7 @@ const HomePage = ({
                   <Trash2 className="w-4 h-4" /> Obriši Događaje
                 </Button>
                 <Link to="/admin/create" className="flex-1 md:flex-none">
-                  <Button className="w-full">
+                  <Button className="w-full bg-green-600 hover:bg-green-500 text-white shadow-green-500/20">
                     <Plus className="w-4 h-4" /> Dodaj Novi Događaj
                   </Button>
                 </Link>
@@ -278,7 +277,7 @@ const HomePage = ({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {visibleEvents.length === 0 ? (
           <div className="col-span-full text-center py-20 text-gray-500 bg-gray-900 rounded-xl border border-gray-800">
-            {isAdmin ? "Nema pronađenih događaja. Dodajte jedan za početak!" : "Trenutno nema nadolazećih događaja."}
+            {isAdmin ? "Nema pronađenih događaja u bazi. Dodajte jedan za početak!" : "Trenutno nema nadolazećih događaja."}
           </div>
         ) : (
           visibleEvents.map(event => {
@@ -402,10 +401,12 @@ const AdminEventForm = ({ onSave }: { onSave: (evt: EventData) => void }) => {
   });
   const [floorPlan1, setFloorPlan1] = useState('');
   const [floorPlan2, setFloorPlan2] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.title || !formData.date) return;
+    setIsSubmitting(true);
 
     // Filter out empty strings
     const floorPlanImages = [floorPlan1, floorPlan2].filter(url => url.trim() !== '');
@@ -422,13 +423,16 @@ const AdminEventForm = ({ onSave }: { onSave: (evt: EventData) => void }) => {
       isHidden: false
     };
 
-    onSave(newEvent);
+    await onSave(newEvent);
+    setIsSubmitting(false);
     navigate('/');
   };
 
   return (
     <div className="max-w-2xl mx-auto bg-gray-900 p-8 rounded-xl shadow-lg border border-gray-800">
-      <h2 className="text-2xl font-bold mb-6 text-white">Kreiraj Novi Događaj</h2>
+      <h2 className="text-2xl font-bold mb-6 text-white flex items-center gap-2">
+        <Plus className="w-6 h-6 text-green-500" /> Kreiraj Novi Događaj
+      </h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <Input 
           label="Naziv Događaja" 
@@ -493,7 +497,11 @@ const AdminEventForm = ({ onSave }: { onSave: (evt: EventData) => void }) => {
 
         <div className="flex gap-4 pt-4">
           <Button type="button" variant="secondary" onClick={() => navigate('/')} className="flex-1">Odustani</Button>
-          <Button type="submit" className="flex-1">Kreiraj Događaj</Button>
+          <Button type="submit" variant="success" className="flex-1" disabled={isSubmitting}>
+             {isSubmitting ? 'Objavljivanje...' : (
+               <><UploadCloud className="w-4 h-4" /> Objavi Događaj</>
+             )}
+          </Button>
         </div>
       </form>
     </div>
@@ -697,7 +705,9 @@ const EditEventModal = ({
           
           <div className="mt-6 flex gap-3 pt-4 border-t border-gray-800">
             <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Odustani</Button>
-            <Button type="submit" className="flex-1">Spremi Promjene</Button>
+            <Button type="submit" variant="success" className="flex-1">
+              <Save className="w-4 h-4" /> Spremi i Ažuriraj
+            </Button>
           </div>
         </form>
       </div>
@@ -929,17 +939,14 @@ const EventDetailPage = ({
 
   if (!event) return <div className="text-center py-20 text-gray-500">Događaj nije pronađen</div>;
 
-  // Sorting Logic: 
-  // 1. Free tables first, Reserved tables last
-  // 2. Among free tables: tables starting with "VIP" first
-  // 3. Fallback to name sort
+  // Sorting Logic
   const sortedTables = useMemo(() => {
     return [...event.tables].sort((a, b) => {
       // 1. Priority: Free vs Reserved
       if (a.status === TableStatus.FREE && b.status === TableStatus.RESERVED) return -1;
       if (a.status === TableStatus.RESERVED && b.status === TableStatus.FREE) return 1;
 
-      // 2. Priority: VIP (Only needed if both are FREE, but safe to do globally if VIP is preferred)
+      // 2. Priority: VIP
       if (a.status === TableStatus.FREE && b.status === TableStatus.FREE) {
         const aIsVip = a.name.trim().toUpperCase().startsWith('VIP');
         const bIsVip = b.name.trim().toUpperCase().startsWith('VIP');
@@ -1214,28 +1221,47 @@ const EventDetailPage = ({
 // --- Main App Component ---
 
 const App = () => {
-  // Global State
-  const [events, setEvents] = useStickyState<EventData[]>(INITIAL_EVENTS, 'citywave-events-v2');
+  // Global State using Firebase instead of LocalStorage
+  const [events, setEvents] = useState<EventData[]>([]);
   const [isAdmin, setIsAdmin] = useState(false);
   const [showAdminLogin, setShowAdminLogin] = useState(false);
 
-  // Actions
-  const handleAddEvent = (newEvent: EventData) => {
-    setEvents(prev => [...prev, newEvent]);
+  // Subscribe to Firebase updates
+  useEffect(() => {
+    // This creates a real-time listener. Whenever data changes in Firestore, 
+    // this callback runs automatically and updates the state.
+    const unsubscribe = onSnapshot(collection(db, "events"), (snapshot) => {
+      const loadedEvents = snapshot.docs.map(doc => doc.data() as EventData);
+      setEvents(loadedEvents);
+    });
+
+    return () => unsubscribe(); // Cleanup listener when component unmounts
+  }, []);
+
+  // Actions now write to Firebase
+  const handleAddEvent = async (newEvent: EventData) => {
+    // Write to Firestore 'events' collection using the event ID as the document ID
+    await setDoc(doc(db, "events", newEvent.id), newEvent);
   };
 
-  const handleUpdateEvent = (updatedEvent: EventData) => {
-    setEvents(prev => prev.map(e => e.id === updatedEvent.id ? updatedEvent : e));
+  const handleUpdateEvent = async (updatedEvent: EventData) => {
+    await updateDoc(doc(db, "events", updatedEvent.id), updatedEvent as any);
   };
 
-  const handleDeleteEvents = (eventIds: string[]) => {
-    setEvents(prev => prev.filter(e => !eventIds.includes(e.id)));
+  const handleDeleteEvents = async (eventIds: string[]) => {
+    // Delete multiple documents
+    for (const id of eventIds) {
+      await deleteDoc(doc(db, "events", id));
+    }
   };
   
-  const handleToggleVisibility = (eventId: string) => {
-    setEvents(prev => prev.map(e => 
-      e.id === eventId ? { ...e, isHidden: !e.isHidden } : e
-    ));
+  const handleToggleVisibility = async (eventId: string) => {
+    const event = events.find(e => e.id === eventId);
+    if (event) {
+      await updateDoc(doc(db, "events", eventId), {
+        isHidden: !event.isHidden
+      });
+    }
   };
 
   const handleAdminClick = () => {
@@ -1247,7 +1273,6 @@ const App = () => {
   };
 
   const handleAdminLogin = (password: string) => {
-    // HARDCODED PASSWORD for simplicity
     if (password === '13377331LL') {
       setIsAdmin(true);
       return true;

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { 
   Calendar, 
+  MapPin, 
   Plus, 
   Trash2, 
   Users, 
@@ -10,6 +11,7 @@ import {
   Lock, 
   ShieldCheck, 
   ArrowLeft,
+  LayoutGrid,
   Info,
   CheckCircle,
   XCircle,
@@ -1287,4 +1289,4 @@ const App = () => {
   );
 };
 
-export default App; 
+export default App;
