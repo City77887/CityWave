@@ -1,20 +1,18 @@
-import { initializeApp } from "firebase/app";
+import * as firebaseApp from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
-// --- VAŽNO: OVDJE ZALIJEPITE SVOJE PODATKE S FIREBASE KONZOLE ---
-// 1. Otiđite na Project Settings u Firebase konzoli
-// 2. Kopirajte 'firebaseConfig' objekt
-// 3. Zamijenite ovaj objekt ispod sa svojim podacima
-
 const firebaseConfig = {
-  apiKey: "OVDJE_ZALIJEPITE_SVOJ_API_KEY",
-  authDomain: "vas-projekt.firebaseapp.com",
-  projectId: "vas-projekt",
-  storageBucket: "vas-projekt.appspot.com",
-  messagingSenderId: "123456789",
-  appId: "1:123456789:web:abcdef123456"
+  apiKey: "AIzaSyAtChrCrjpxTZD4KMv7nv9oxIe0CqVUUc0",
+  authDomain: "citywaveevent.firebaseapp.com",
+  projectId: "citywaveevent",
+  storageBucket: "citywaveevent.firebasestorage.app",
+  messagingSenderId: "1052821816110",
+  appId: "1:1052821816110:web:6fa218b3429034d424b0bf",
+  measurementId: "G-EMCZRSV48G"
 };
 
 // Initialize Firebase
-const app = initializeApp(firebaseConfig);
+// Using any cast on the namespace import to bypass the TypeScript error
+// claiming initializeApp is not exported, which can happen with mismatched types.
+const app = (firebaseApp as any).initializeApp(firebaseConfig);
 export const db = getFirestore(app);
