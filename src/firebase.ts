@@ -1,4 +1,5 @@
 import * as firebaseApp from "firebase/app";
+import * as firebaseAnalytics from "firebase/analytics";
 import { getFirestore } from "firebase/firestore";
 
 const firebaseConfig = {
@@ -12,7 +13,8 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-// Using any cast on the namespace import to bypass the TypeScript error
-// claiming initializeApp is not exported, which can happen with mismatched types.
-const app = (firebaseApp as any).initializeApp(firebaseConfig);
+const app = firebaseApp.initializeApp(firebaseConfig);
+const analytics = firebaseAnalytics.getAnalytics(app);
+
+// Export database for the app to use
 export const db = getFirestore(app);
