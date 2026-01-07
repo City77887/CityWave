@@ -3,6 +3,7 @@ import { EventData, TableStatus } from './types';
 export const INITIAL_EVENTS: EventData[] = [
   {
     id: 'evt-1',
+    ownerId: 'admin',
     title: 'Neon Jazz Večeri',
     date: '2025-11-15T20:00',
     description: 'Doživite lagani ritam jazza pod neonskim svjetlima. Večer soula, saksofona i sofisticiranih pića.',
@@ -19,6 +20,7 @@ export const INITIAL_EVENTS: EventData[] = [
   },
   {
     id: 'evt-2',
+    ownerId: 'admin',
     title: 'CityWave Techno Tulum',
     date: '2025-11-18T22:00',
     description: 'Najveći techno događaj godine. Visoka energija, duboki bas i nezaboravan light show.',

@@ -2,7 +2,7 @@ export interface Reservation {
   firstName: string;
   lastName: string;
   phone: string;
-  password: string; // Stored in plain text as per requirements (Admin needs to see it)
+  password: string; 
 }
 
 export enum TableStatus {
@@ -17,19 +17,28 @@ export interface Table {
   reservation?: Reservation;
 }
 
+export interface AdminUser {
+  id: string;
+  username: string;
+  password: string;
+  isMain: boolean;
+}
+
 export interface EventData {
   id: string;
   title: string;
   date: string;
-  description: string; // Kratki info za početnu stranicu
-  longDescription?: string; // Detaljni opis za gumb "VIŠE INFORMACIJA"
+  description: string;
+  longDescription?: string;
   imageUrl: string;
-  floorPlanImages?: string[]; // URLs for 1 or 2 floor plan images
+  floorPlanImages?: string[];
   tables: Table[];
   isHidden?: boolean;
+  ownerId: string; // Korisničko ime admina koji je kreirao event
 }
 
 export interface AppState {
   events: EventData[];
   isAdmin: boolean;
+  currentAdmin: AdminUser | null;
 }
