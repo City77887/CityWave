@@ -27,7 +27,9 @@ import {
   Save,
   UserPlus,
   ShieldAlert,
-  Settings
+  Settings,
+  Ticket,
+  AlertTriangle
 } from 'lucide-react';
 import { EventData, Table, TableStatus, Reservation, AdminUser } from './types';
 import { db } from './firebase';
@@ -207,10 +209,98 @@ const EventDetailPage = ({ events, currentAdmin, updateEvent }: any) => {
   const event = events.find((e: any) => e.id === id);
   const [newT, setNewT] = useState('');
 
+  // Logika za automatsko otkazivanje (ako nije unijeto 4 broja u 5 dana)
+  useEffect(() => {
+    if (!event) return;
+    const now = new Date();
+    let hasChanges = false;
+    const updatedTables = event.tables.map((t: Table) => {
+      if (t.status === TableStatus.RESERVED && t.reservation) {
+        const reservedDate = new Date(t.reservation.reservedAt);
+        const diffDays = (now.getTime() - reservedDate.getTime()) / (1000 * 60 * 60 * 24);
+        const serialsCount = t.reservation.ticketSerials?.length || 0;
+        
+        if (diffDays > 5 && serialsCount < 4) {
+          hasChanges = true;
+          return { ...t, status: TableStatus.FREE, reservation: undefined };
+        }
+      }
+      return t;
+    });
+
+    if (hasChanges) {
+      updateEvent({ ...event, tables: updatedTables });
+    }
+  }, [event]);
+
   if (!event) return <div className="text-center py-40">Učitavanje...</div>;
 
   const isAdmin = !!currentAdmin;
   const isOwner = currentAdmin?.username === event.ownerId || currentAdmin?.isMain;
+
+  const handleTableAction = (t: Table) => {
+    const isRes = t.status === TableStatus.RESERVED;
+
+    if (isAdmin && isOwner && isRes) {
+      alert(`Gost: ${t.reservation?.firstName} ${t.reservation?.lastName}\nKontakt: ${t.reservation?.phone}\nLozinka: ${t.reservation?.password}\nKarte: ${t.reservation?.ticketSerials?.join(', ') || 'Nema'}`);
+    } else if (!isRes && !isAdmin) {
+      // NOVA REZERVACIJA
+      const f = prompt('Vaše ime:');
+      const l = prompt('Vaše prezime:');
+      const ph = prompt('Broj telefona:');
+      const p = prompt('Postavite lozinku za upravljanje stolom:');
+      
+      if (f && l && ph && p) {
+        const newReservation: Reservation = {
+          firstName: f,
+          lastName: l,
+          phone: ph,
+          password: p,
+          reservedAt: new Date().toISOString(),
+          ticketSerials: []
+        };
+        const updated = event.tables.map((x: any) => x.id === t.id ? { ...x, status: TableStatus.RESERVED, reservation: newReservation } : x);
+        updateEvent({ ...event, tables: updated });
+        alert('Stol je uspješno rezerviran! Imate 5 dana za unos 4 serijska broja karata.');
+      }
+    } else if (isRes && !isAdmin) {
+      // UPRAVLJANJE POSTOJEĆOM REZERVACIJOM
+      const pass = prompt('Unesite svoju lozinku za ovaj stol:');
+      if (pass !== t.reservation?.password) {
+        alert('Netočna lozinka!');
+        return;
+      }
+
+      const action = prompt('Što želite učiniti?\n1 - Unijeti serijske brojeve karata\n2 - Otkazati stol (bit će odmah slobodan svima)');
+      
+      if (action === '1') {
+        const serials = prompt('Unesite 4 serijska broja odvojena zarezom (npr. 102, 105, 110, 115):');
+        if (serials) {
+          const sArr = serials.split(',').map(s => parseInt(s.trim())).filter(n => !isNaN(n));
+          if (sArr.length !== 4) {
+            alert('Morate unijeti točno 4 broja!');
+            return;
+          }
+          // Validacija raspona
+          const allValid = sArr.every(n => n >= event.minTicketSerial && n <= event.maxTicketSerial);
+          if (!allValid) {
+            alert(`Neki brojevi nisu važeći. Moraju biti između ${event.minTicketSerial} i ${event.maxTicketSerial}.`);
+            return;
+          }
+
+          const updated = event.tables.map((x: any) => x.id === t.id ? { ...x, reservation: { ...x.reservation, ticketSerials: sArr } } : x);
+          updateEvent({ ...event, tables: updated });
+          alert('Serijski brojevi su uspješno spremljeni i vaša rezervacija je potvrđena!');
+        }
+      } else if (action === '2') {
+        if (window.confirm('Jeste li sigurni da želite otkazati stol? Postat će odmah slobodan za druge.')) {
+          const updated = event.tables.map((x: any) => x.id === t.id ? { ...x, status: TableStatus.FREE, reservation: undefined } : x);
+          updateEvent({ ...event, tables: updated });
+          alert('Rezervacija otkazana. Stol je sada slobodan.');
+        }
+      }
+    }
+  };
 
   return (
     <div className="max-w-6xl mx-auto space-y-12">
@@ -228,6 +318,12 @@ const EventDetailPage = ({ events, currentAdmin, updateEvent }: any) => {
                     <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-800 text-center"><Clock className="w-5 h-5 text-indigo-500 mx-auto mb-2"/><p className="text-xs font-black text-white uppercase">{new Date(event.date).toLocaleTimeString('hr-HR', {hour:'2-digit', minute:'2-digit'})}</p></div>
                   </div>
                 </div>
+                {isAdmin && isOwner && (
+                  <div className="mt-8 p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl">
+                    <p className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-2">Admin Info (Serijski brojevi)</p>
+                    <p className="text-white font-bold">Raspon: {event.minTicketSerial} - {event.maxTicketSerial}</p>
+                  </div>
+                )}
              </div>
            </div>
         </div>
@@ -236,6 +332,11 @@ const EventDetailPage = ({ events, currentAdmin, updateEvent }: any) => {
           <div className="flex justify-between items-center border-b border-gray-800 pb-8">
              <h2 className="text-3xl font-black text-white uppercase tracking-tighter">REZERVACIJA STOLOVA</h2>
              {event.floorPlanImages?.length > 0 && <Button className="bg-indigo-600/10 text-indigo-400 border border-indigo-500/30 hover:bg-indigo-600 hover:text-white"><MapIcon className="w-5 h-5"/> Tlocrt</Button>}
+          </div>
+
+          <div className="bg-yellow-500/10 p-4 rounded-2xl border border-yellow-500/20 flex items-start gap-3">
+            <AlertTriangle className="text-yellow-500 shrink-0 w-5 h-5" />
+            <p className="text-xs text-yellow-500/80 font-bold leading-tight">NAPOMENA: Nakon rezervacije imate točno 5 dana za unos 4 važeća serijska broja karata, inače se stol automatski oslobađa.</p>
           </div>
 
           {isAdmin && isOwner && (
@@ -248,31 +349,20 @@ const EventDetailPage = ({ events, currentAdmin, updateEvent }: any) => {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
              {event.tables.map((t: any) => {
                const isRes = t.status === TableStatus.RESERVED;
+               const hasTickets = t.reservation?.ticketSerials?.length === 4;
                return (
                  <button 
                   key={t.id} 
-                  onClick={() => {
-                    if (isAdmin && isOwner && isRes) {
-                       alert(`Gost: ${t.reservation.firstName} ${t.reservation.lastName}\nKontakt: ${t.reservation.phone}\nPass: ${t.reservation.password}`);
-                    } else if (!isRes && !isAdmin) {
-                       const f = prompt('Ime:'); const l = prompt('Prezime:'); const ph = prompt('Telefon:'); const p = prompt('Lozinka:');
-                       if(f && l && ph && p) {
-                          const updated = event.tables.map((x: any) => x.id === t.id ? {...x, status:TableStatus.RESERVED, reservation:{firstName:f, lastName:l, phone:ph, password:p}} : x);
-                          updateEvent({...event, tables:updated});
-                       }
-                    } else if (isRes && !isAdmin) {
-                       const p = prompt('Lozinka za otkazivanje:');
-                       if(p === t.reservation.password) {
-                          const updated = event.tables.map((x: any) => x.id === t.id ? {...x, status:TableStatus.FREE, reservation:undefined} : x);
-                          updateEvent({...event, tables:updated});
-                       } else { alert('Netočna lozinka!'); }
-                    }
-                  }}
+                  onClick={() => handleTableAction(t)}
                   className={`aspect-square rounded-[2rem] border transition-all flex flex-col items-center justify-center gap-2 p-4 ${isRes ? 'bg-gray-900 border-gray-800 opacity-60' : 'bg-gray-800 border-indigo-500/20 hover:border-indigo-500 hover:scale-105 shadow-xl shadow-black/40'}`}
                  >
-                   <div className={`p-3 rounded-full ${isRes ? 'bg-gray-800 text-gray-600' : 'bg-indigo-500/10 text-indigo-400'}`}>{isRes ? <Lock className="w-6 h-6"/> : <Users className="w-6 h-6"/>}</div>
+                   <div className={`p-3 rounded-full ${isRes ? 'bg-gray-800 text-gray-600' : 'bg-indigo-500/10 text-indigo-400'}`}>
+                     {isRes ? (hasTickets ? <CheckCircle className="w-6 h-6 text-emerald-500"/> : <Lock className="w-6 h-6"/>) : <Users className="w-6 h-6"/>}
+                   </div>
                    <span className="font-black text-xs text-white uppercase truncate w-full text-center px-2">{t.name}</span>
-                   <span className={`text-[9px] font-black uppercase tracking-widest ${isRes ? 'text-red-900' : 'text-emerald-500'}`}>{isRes ? 'Zauzeto' : 'Slobodno'}</span>
+                   <span className={`text-[9px] font-black uppercase tracking-widest ${isRes ? (hasTickets ? 'text-emerald-500' : 'text-red-900') : 'text-emerald-500'}`}>
+                     {isRes ? (hasTickets ? 'Potvrđeno' : 'Čeka karte') : 'Slobodno'}
+                   </span>
                  </button>
                );
              })}
@@ -344,7 +434,7 @@ const AdminLoginModal = ({ isOpen, onClose, onLogin }: any) => {
 };
 
 const AdminCreate = ({ currentAdmin, onSave }: any) => {
-  const [f, setF] = useState({ title:'', date:'', description:'', longDescription:'', imageUrl:'' });
+  const [f, setF] = useState({ title:'', date:'', description:'', longDescription:'', imageUrl:'', minS: 0, maxS: 9999 });
   const navigate = useNavigate();
   return (
     <div className="max-w-2xl mx-auto bg-gray-900 p-10 rounded-[3rem] border border-gray-800 shadow-2xl space-y-6">
@@ -352,9 +442,17 @@ const AdminCreate = ({ currentAdmin, onSave }: any) => {
        <Input label="Naziv" value={f.title} onChange={e => setF({...f, title:e.target.value})} />
        <Input label="Datum" type="datetime-local" value={f.date} onChange={e => setF({...f, date:e.target.value})} />
        <Input label="URL Slike" value={f.imageUrl} onChange={e => setF({...f, imageUrl:e.target.value})} />
+       
+       <div className="grid grid-cols-2 gap-4 bg-indigo-500/5 p-6 rounded-3xl border border-indigo-500/10">
+          <Input label="Min. Serijski Broj" type="number" value={f.minS} onChange={e => setF({...f, minS: parseInt(e.target.value)})} />
+          <Input label="Max. Serijski Broj" type="number" value={f.maxS} onChange={e => setF({...f, maxS: parseInt(e.target.value)})} />
+          <p className="col-span-2 text-[10px] text-indigo-400 font-bold uppercase tracking-widest text-center mt-[-10px]">Ovaj raspon će se koristiti za validaciju karata korisnika.</p>
+       </div>
+
        <div className="space-y-1"><label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Kratki Opis</label><textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-medium focus:ring-2 focus:ring-indigo-500" rows={2} value={f.description} onChange={e => setF({...f, description:e.target.value})} /></div>
        <div className="space-y-1"><label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Detalji</label><textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-medium focus:ring-2 focus:ring-indigo-500" rows={4} value={f.longDescription} onChange={e => setF({...f, longDescription:e.target.value})} /></div>
-       <div className="flex gap-4 pt-4"><Button variant="secondary" onClick={() => navigate('/')} className="flex-1 rounded-2xl">Odustani</Button><Button variant="primary" className="flex-1 rounded-2xl h-14" onClick={async () => { if(f.title && f.date){ await onSave({ ...f, id:`evt-${Date.now()}`, tables:[], ownerId:currentAdmin.username }); navigate('/'); } }}>Objavi</Button></div>
+       
+       <div className="flex gap-4 pt-4"><Button variant="secondary" onClick={() => navigate('/')} className="flex-1 rounded-2xl">Odustani</Button><Button variant="primary" className="flex-1 rounded-2xl h-14" onClick={async () => { if(f.title && f.date){ await onSave({ ...f, id:`evt-${Date.now()}`, tables:[], ownerId:currentAdmin.username, minTicketSerial: f.minS, maxTicketSerial: f.maxS }); navigate('/'); } }}>Objavi</Button></div>
     </div>
   );
 };

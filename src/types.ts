@@ -3,6 +3,8 @@ export interface Reservation {
   lastName: string;
   phone: string;
   password: string; 
+  reservedAt: string; // ISO timestamp
+  ticketSerials?: number[]; // Niz od 4 broja
 }
 
 export enum TableStatus {
@@ -34,7 +36,9 @@ export interface EventData {
   floorPlanImages?: string[];
   tables: Table[];
   isHidden?: boolean;
-  ownerId: string; // Korisničko ime admina koji je kreirao event
+  ownerId: string;
+  minTicketSerial: number; // Privatno za admina
+  maxTicketSerial: number; // Privatno za admina
 }
 
 export interface AppState {
