@@ -158,7 +158,7 @@ const HomePage = ({ events, currentAdmin, onDeleteEvents, onToggleVisibility }: 
       <div className="flex flex-col md:flex-row justify-between items-end gap-4">
         <div>
           <h1 className="text-5xl font-black text-white tracking-tighter mb-2">DOŽIVITE <span className="text-indigo-600">VIŠE.</span></h1>
-          <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Najekskluzivniji događaji u gradu na dlanu.</p>
+          <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Your City, Your Wave</p>
         </div>
         {isAdmin && (
           <Link to="/admin/create">
