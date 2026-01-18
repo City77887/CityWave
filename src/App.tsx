@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { 
   Calendar, 
@@ -15,7 +15,6 @@ import {
   Eye,
   EyeOff,
   Clock,
-  FileText,
   Edit,
   Map as MapIcon,
   LogOut,
@@ -194,11 +193,11 @@ const HomePage = ({ events, currentAdmin, onDeleteEvents, onToggleVisibility }: 
   );
 };
 
-// --- Admin Uređivanje i Detalji ---
+// --- Admin Modali za Uređivanje ---
 
 const EditEventModal = ({ isOpen, onClose, event, onSave }: any) => {
   const [f, setF] = useState<any>(null);
-  useEffect(() => { if(event) setF({...event}); }, [event, isOpen]);
+  useEffect(() => { if(event && isOpen) setF({...event}); }, [event, isOpen]);
   if (!isOpen || !f) return null;
 
   return (
@@ -216,12 +215,12 @@ const EditEventModal = ({ isOpen, onClose, event, onSave }: any) => {
           <Input label="Max. Serijski Broj" type="number" value={f.maxTicketSerial} onChange={e => setF({...f, maxTicketSerial: parseInt(e.target.value)})} />
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Kratki Opis</label>
-          <textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-medium focus:ring-2 focus:ring-indigo-500" rows={2} value={f.description} onChange={e => setF({...f, description: e.target.value})} />
+          <label className="text-[10px] font-black text-gray-500 uppercase">Kratki Opis</label>
+          <textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white" rows={2} value={f.description} onChange={e => setF({...f, description: e.target.value})} />
         </div>
         <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Detaljni Opis</label>
-          <textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-medium focus:ring-2 focus:ring-indigo-500" rows={5} value={f.longDescription} onChange={e => setF({...f, longDescription: e.target.value})} />
+          <label className="text-[10px] font-black text-gray-500 uppercase">Detaljni Opis</label>
+          <textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white" rows={5} value={f.longDescription} onChange={e => setF({...f, longDescription: e.target.value})} />
         </div>
         <div className="flex gap-4 pt-4">
           <Button variant="secondary" onClick={onClose} className="flex-1 rounded-2xl">Odustani</Button>
@@ -274,6 +273,8 @@ const AdminTableDetailModal = ({ isOpen, onClose, table, onRelease }: any) => {
   );
 };
 
+// --- Detalji Događaja ---
+
 const EventDetailPage = ({ events, currentAdmin, updateEvent }: any) => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -304,7 +305,6 @@ const EventDetailPage = ({ events, currentAdmin, updateEvent }: any) => {
   if (!event) return <div className="text-center py-40">Učitavanje...</div>;
 
   const isAdmin = !!currentAdmin;
-  // Glavni admin ima pravo na SVE, ostali samo na svoje
   const isOwner = currentAdmin?.username === event.ownerId || currentAdmin?.isMain;
 
   const handleTableAction = (t: Table) => {
@@ -389,7 +389,7 @@ const EventDetailPage = ({ events, currentAdmin, updateEvent }: any) => {
 
           <div className="bg-yellow-500/10 p-4 rounded-2xl border border-yellow-500/20 flex items-start gap-3">
             <AlertTriangle className="text-yellow-500 shrink-0 w-5 h-5" />
-            <p className="text-xs text-yellow-500/80 font-bold leading-tight uppercase">Važno: Stol se automatski oslobađa nakon 5 dana ako nisu unijeta 4 serijska broja.</p>
+            <p className="text-xs text-yellow-500/80 font-bold leading-tight uppercase uppercase">Važno: Stol se automatski oslobađa nakon 5 dana ako nisu unijeta 4 serijska broja.</p>
           </div>
 
           {isAdmin && isOwner && (
