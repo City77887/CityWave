@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
 import { 
   Calendar, 
+  MapPin, 
   Plus, 
   Trash2, 
   Users, 
@@ -10,519 +11,1281 @@ import {
   Lock, 
   ShieldCheck, 
   ArrowLeft,
+  LayoutGrid,
+  Info,
   CheckCircle,
   XCircle,
   Eye,
   EyeOff,
   Clock,
+  FileText,
   Edit,
   Map as MapIcon,
+  Image as ImageIcon,
+  Download,
   LogOut,
-  Settings,
-  UserPlus,
-  AlertTriangle
+  KeyRound
 } from 'lucide-react';
-import { EventData, Table, TableStatus, Reservation, AdminUser } from './types';
-import { db } from './firebase';
-import { 
-  collection, 
-  onSnapshot, 
-  doc, 
-  setDoc, 
-  deleteDoc
-} from 'firebase/firestore';
+import { EventData, Table, TableStatus, Reservation } from './types';
+import { INITIAL_EVENTS } from './constants';
 
-// --- Shared Components ---
+// --- Utility Components ---
 
-const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'outline' | 'success' }> = ({ 
+const Button: React.FC<React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'outline' }> = ({ 
   className, 
   variant = 'primary', 
   ...props 
 }) => {
-  const baseStyles = "px-4 py-2 rounded-lg font-bold transition-all duration-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed active:scale-95";
+  const baseStyles = "px-4 py-2 rounded-lg font-medium transition-colors duration-200 flex items-center justify-center gap-2 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed";
+  
+  // Updated variants for Dark Mode
   const variants = {
-    primary: "bg-indigo-600 text-white hover:bg-indigo-500 shadow-lg shadow-indigo-500/20",
-    secondary: "bg-gray-800 text-gray-200 hover:bg-gray-700 border border-gray-700",
-    danger: "bg-red-600 text-white hover:bg-red-500 shadow-lg shadow-red-500/20",
-    success: "bg-emerald-600 text-white hover:bg-emerald-500 shadow-lg shadow-emerald-500/20",
-    outline: "border border-gray-600 text-gray-300 hover:bg-gray-800"
+    primary: "bg-indigo-600 text-white hover:bg-indigo-500 focus:ring-indigo-500 shadow-lg shadow-indigo-500/20",
+    secondary: "bg-gray-800 text-gray-200 hover:bg-gray-700 focus:ring-gray-500 border border-gray-700",
+    danger: "bg-red-600 text-white hover:bg-red-500 focus:ring-red-500 shadow-lg shadow-red-500/20",
+    outline: "border border-gray-600 text-gray-300 hover:bg-gray-800 focus:ring-indigo-500"
   };
-  return <button className={`${baseStyles} ${variants[variant]} ${className || ''}`} {...props} />;
+  
+  return (
+    <button className={`${baseStyles} ${variants[variant]} ${className || ''}`} {...props} />
+  );
 };
 
 const Input: React.FC<React.InputHTMLAttributes<HTMLInputElement> & { label?: string; icon?: React.ReactNode }> = ({ label, icon, className, ...props }) => (
-  <div className="mb-4 w-full text-left">
-    {label && <label className="block text-[10px] font-black text-gray-500 uppercase tracking-widest mb-1.5 ml-1">{label}</label>}
+  <div className="mb-4">
+    {label && <label className="block text-sm font-medium text-gray-300 mb-1">{label}</label>}
     <div className="relative">
-      {icon && <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-500">{icon}</div>}
-      <input className={`w-full ${icon ? 'pl-10' : 'px-4'} py-3 bg-gray-900 border border-gray-800 text-white rounded-xl focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-all placeholder-gray-600 ${className || ''}`} {...props} />
+      {icon && (
+        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+          {icon}
+        </div>
+      )}
+      <input 
+        className={`w-full ${icon ? 'pl-10' : 'px-3'} py-2 bg-gray-800 border border-gray-700 text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-500 ${className || ''}`} 
+        {...props} 
+      />
     </div>
   </div>
 );
 
-// --- Layout & Nav ---
+// --- Storage Hook ---
 
-const Layout = ({ currentAdmin, onLoginClick, onLogoutClick, onManageAdmins, children }: any) => (
-  <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans selection:bg-indigo-500/30">
-    <nav className="bg-gray-900/80 border-b border-gray-800 sticky top-0 z-50 backdrop-blur-xl">
-      <div className="max-w-7xl mx-auto px-4 h-20 flex justify-between items-center">
-        <Link to="/" className="flex items-center gap-2 group">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/40 group-hover:rotate-12 transition-transform">
-             <Clock className="text-white w-6 h-6" />
-          </div>
-          <span className="font-black text-2xl tracking-tighter text-white">CITYWAVE <span className="text-indigo-500">EVENTS</span></span>
-        </Link>
-        <div className="flex items-center gap-3">
-          {currentAdmin?.isMain && (
-            <button onClick={onManageAdmins} className="p-3 bg-gray-800 rounded-xl border border-gray-700 hover:bg-gray-700 transition-all text-indigo-400">
-              <Settings className="w-5 h-5"/>
-            </button>
-          )}
-          {currentAdmin ? (
-            <div className="flex items-center gap-3 bg-gray-800 border border-gray-700 pl-4 pr-2 py-1.5 rounded-2xl">
-               <div className="flex flex-col items-end">
-                 <span className="text-[10px] font-black text-indigo-500 uppercase leading-none mb-0.5">{currentAdmin.isMain ? 'Glavni Admin' : 'Admin'}</span>
-                 <span className="text-sm font-bold text-white leading-none">{currentAdmin.username}</span>
-               </div>
-               <button onClick={onLogoutClick} className="p-2 text-gray-400 hover:text-red-400 transition-colors"><LogOut className="w-5 h-5"/></button>
+function useStickyState<T>(defaultValue: T, key: string): [T, React.Dispatch<React.SetStateAction<T>>] {
+  const [value, setValue] = useState<T>(() => {
+    const stickyValue = window.localStorage.getItem(key);
+    return stickyValue !== null ? JSON.parse(stickyValue) : defaultValue;
+  });
+
+  useEffect(() => {
+    window.localStorage.setItem(key, JSON.stringify(value));
+  }, [key, value]);
+
+  return [value, setValue];
+}
+
+// --- Views & Components ---
+
+// 1. Navigation / Layout
+const Layout = ({ isAdmin, onAdminClick, children }: { isAdmin: boolean, onAdminClick: () => void, children?: React.ReactNode }) => {
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans selection:bg-indigo-500/30">
+      <nav className="bg-gray-900 border-b border-gray-800 sticky top-0 z-50 backdrop-blur-lg bg-opacity-90">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex justify-between h-16">
+            <div className="flex items-center">
+              <Link to="/" className="flex items-center gap-3">
+                <span className="font-bold text-xl text-white tracking-tight">CityWave Events</span>
+              </Link>
             </div>
-          ) : (
-            <Button onClick={onLoginClick} variant="secondary" className="rounded-2xl">
-              <ShieldCheck className="w-5 h-5" /> Admin
+            <div className="flex items-center gap-4">
+               <button 
+                onClick={onAdminClick}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-colors border ${isAdmin ? 'bg-indigo-900/50 text-indigo-200 border-indigo-500/50' : 'bg-gray-800 text-gray-400 border-gray-700 hover:bg-gray-700'}`}
+                title={isAdmin ? "Odjavi se iz Admina" : "Prijava za Administratora"}
+               >
+                 {isAdmin ? <LogOut className="w-4 h-4" /> : <ShieldCheck className="w-4 h-4" />}
+                 {isAdmin ? 'Admin (Odjava)' : 'Admin Prijava'}
+               </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+      <main className="flex-grow max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {children}
+      </main>
+      <footer className="bg-gray-900 border-t border-gray-800 mt-auto">
+        <div className="max-w-7xl mx-auto px-4 py-6 sm:px-6 lg:px-8">
+          <p className="text-center text-gray-500 text-sm">© 2025 CityWave Events. Sva prava pridržana.</p>
+        </div>
+      </footer>
+    </div>
+  );
+};
+
+// Admin Login Modal
+const AdminLoginModal = ({ 
+  isOpen, 
+  onClose, 
+  onLogin 
+}: { 
+  isOpen: boolean, 
+  onClose: () => void, 
+  onLogin: (password: string) => boolean 
+}) => {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const success = onLogin(password);
+    if (success) {
+      setPassword('');
+      setError('');
+      onClose();
+    } else {
+      setError('Netočna lozinka.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-fade-in-up">
+        <div className="flex items-center gap-2 mb-4 text-indigo-500">
+           <ShieldCheck className="w-6 h-6" />
+           <h3 className="text-xl font-bold text-white">Admin Pristup</h3>
+        </div>
+        <p className="text-gray-400 mb-6">Unesite administratorsku lozinku za upravljanje događajima.</p>
+        
+        <form onSubmit={handleSubmit}>
+          <Input 
+            type="password" 
+            placeholder="Lozinka" 
+            value={password} 
+            onChange={e => setPassword(e.target.value)} 
+            icon={<KeyRound className="w-4 h-4" />}
+            autoFocus
+          />
+          {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+          
+          <div className="flex gap-3">
+            <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Odustani</Button>
+            <Button type="submit" className="flex-1">Prijavi se</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// 2. Home Page
+const HomePage = ({ 
+  events, 
+  isAdmin, 
+  onDeleteEvents,
+  onToggleVisibility
+}: { 
+  events: EventData[], 
+  isAdmin: boolean, 
+  onDeleteEvents: (ids: string[]) => void,
+  onToggleVisibility: (id: string) => void
+}) => {
+  const navigate = useNavigate();
+  const [isDeleteMode, setIsDeleteMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+  // Filter events: Regular users see only unhidden events. Admins see all.
+  const visibleEvents = useMemo(() => {
+    return events.filter(e => isAdmin || !e.isHidden);
+  }, [events, isAdmin]);
+
+  // Reset selection when toggling delete mode
+  useEffect(() => {
+    if (!isDeleteMode) setSelectedIds([]);
+  }, [isDeleteMode]);
+
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      if (prev.includes(id)) {
+        return prev.filter(item => item !== id);
+      } else {
+        return [...prev, id];
+      }
+    });
+  };
+
+  const handleConfirmDelete = () => {
+    if (selectedIds.length === 0) {
+      setIsDeleteMode(false);
+      return;
+    }
+    
+    if (window.confirm(`Jeste li sigurni da želite obrisati ${selectedIds.length} događaj(a)? Ova radnja se ne može poništiti.`)) {
+      onDeleteEvents(selectedIds);
+      setIsDeleteMode(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <h1 className="text-3xl font-bold text-white">Nadolazeći Događaji</h1>
+          {isDeleteMode && (
+            <span className="bg-red-900/30 border border-red-500/30 text-red-400 text-sm px-3 py-1 rounded-full font-medium animate-pulse">
+              Odaberite događaje za brisanje
+            </span>
+          )}
+        </div>
+        
+        {isAdmin && (
+          <div className="flex items-center gap-3 w-full md:w-auto">
+            {isDeleteMode ? (
+              <>
+                 <Button variant="secondary" onClick={() => setIsDeleteMode(false)} className="flex-1 md:flex-none">
+                  Odustani
+                </Button>
+                <Button 
+                  type="button"
+                  variant="danger" 
+                  onClick={handleConfirmDelete}
+                  disabled={selectedIds.length === 0}
+                  className={`flex-1 md:flex-none transition-all ${selectedIds.length === 0 ? 'opacity-50 cursor-not-allowed' : 'opacity-100'}`}
+                >
+                  <Trash2 className="w-4 h-4" /> 
+                  Potvrdi Brisanje ({selectedIds.length})
+                </Button>
+              </>
+            ) : (
+              <>
+                 <Button 
+                   variant="outline" 
+                   onClick={() => setIsDeleteMode(true)} 
+                   className="flex-1 md:flex-none text-red-400 border-red-900/50 hover:bg-red-900/20 hover:border-red-500/50"
+                  >
+                  <Trash2 className="w-4 h-4" /> Obriši Događaje
+                </Button>
+                <Link to="/admin/create" className="flex-1 md:flex-none">
+                  <Button className="w-full">
+                    <Plus className="w-4 h-4" /> Dodaj Novi Događaj
+                  </Button>
+                </Link>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {visibleEvents.length === 0 ? (
+          <div className="col-span-full text-center py-20 text-gray-500 bg-gray-900 rounded-xl border border-gray-800">
+            {isAdmin ? "Nema pronađenih događaja. Dodajte jedan za početak!" : "Trenutno nema nadolazećih događaja."}
+          </div>
+        ) : (
+          visibleEvents.map(event => {
+            const isSelected = selectedIds.includes(event.id);
+            const isHidden = !!event.isHidden;
+            
+            return (
+              <div 
+                key={event.id} 
+                onClick={(e) => {
+                  if (isDeleteMode) {
+                    e.preventDefault();
+                    toggleSelection(event.id);
+                  } else {
+                    navigate(`/event/${event.id}`);
+                  }
+                }}
+                className={`
+                  group relative bg-gray-900 rounded-xl shadow-lg border overflow-hidden transition-all duration-200 flex flex-col cursor-pointer
+                  ${isDeleteMode 
+                    ? (isSelected ? 'ring-2 ring-red-500 border-red-500 transform scale-95 opacity-100' : 'border-gray-800 hover:border-red-500/50 opacity-70 hover:opacity-100') 
+                    : 'border-gray-800 hover:border-gray-700 hover:shadow-xl hover:shadow-black/50'
+                  }
+                  ${isHidden && !isDeleteMode ? 'opacity-60 grayscale-[0.5]' : ''}
+                `}
+              >
+                {/* Admin Visibility Toggle (Only when not deleting) */}
+                {isAdmin && !isDeleteMode && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onToggleVisibility(event.id);
+                    }}
+                    className="absolute top-2 left-2 z-20 p-2 rounded-full bg-black/50 backdrop-blur-md shadow-sm border border-white/10 hover:bg-black/80 transition-all transform hover:scale-105"
+                    title={isHidden ? "Prikaži posjetiteljima" : "Sakrij od posjetitelja"}
+                  >
+                    {isHidden ? (
+                      <EyeOff className="w-5 h-5 text-gray-400" />
+                    ) : (
+                      <Eye className="w-5 h-5 text-indigo-400" />
+                    )}
+                  </button>
+                )}
+
+                {/* Hidden Badge for Admin */}
+                {isAdmin && isHidden && (
+                   <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none">
+                      <span className="bg-black/80 backdrop-blur-md text-white px-4 py-2 rounded-full font-bold shadow-lg border border-white/10">
+                        SKRIVENO
+                      </span>
+                   </div>
+                )}
+
+                {/* Selection Overlay Indicator */}
+                {isDeleteMode && (
+                   <div className={`absolute top-3 right-3 z-30 transition-transform duration-200 ${isSelected ? 'scale-110' : 'scale-100'}`}>
+                      {isSelected ? (
+                        <div className="bg-red-600 text-white p-1 rounded-full shadow-lg">
+                          <CheckCircle className="w-6 h-6" />
+                        </div>
+                      ) : (
+                        <div className="bg-black/50 backdrop-blur text-gray-400 p-1 rounded-full shadow border border-gray-600">
+                           <div className="w-6 h-6 rounded-full border-2 border-gray-500" />
+                        </div>
+                      )}
+                   </div>
+                )}
+
+                {/* Image Container - Updated to adapt to image size */}
+                <div className="w-full overflow-hidden bg-gray-800 relative">
+                  <img 
+                    src={event.imageUrl} 
+                    alt={event.title} 
+                    className="w-full h-auto block group-hover:scale-105 transition-transform duration-500" 
+                  />
+                  {!isDeleteMode && (
+                    <div className="absolute top-0 right-0 p-2">
+                      <span className="bg-black/70 backdrop-blur-sm text-white text-xs px-2 py-1 rounded-md border border-white/10">
+                        {new Date(event.date).toLocaleDateString('hr-HR')}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                
+                <div className="p-5 flex-grow">
+                  <h3 className={`text-xl font-bold mb-2 transition-colors ${isDeleteMode && isSelected ? 'text-red-400' : 'text-white group-hover:text-indigo-400'}`}>
+                    {event.title}
+                  </h3>
+                  <p className="text-gray-400 text-sm line-clamp-2 mb-4">
+                    {event.description}
+                  </p>
+                  <div className="flex items-center text-gray-500 text-sm gap-2 mt-auto">
+                    <Clock className="w-4 h-4" />
+                    <span>{new Date(event.date).toLocaleTimeString('hr-HR', {hour: '2-digit', minute:'2-digit'})} sati</span>
+                  </div>
+                </div>
+                
+                {/* Delete Mode Overlay - Visual only */}
+                {isDeleteMode && !isSelected && (
+                  <div className="absolute inset-0 bg-black/40 group-hover:bg-transparent pointer-events-none" />
+                )}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
+
+// 3. Admin Create/Edit Event
+const AdminEventForm = ({ onSave }: { onSave: (evt: EventData) => void }) => {
+  const navigate = useNavigate();
+  const [formData, setFormData] = useState<Partial<EventData>>({
+    title: '',
+    date: '',
+    description: '',
+    longDescription: '',
+    imageUrl: 'https://picsum.photos/800/400',
+  });
+  const [floorPlan1, setFloorPlan1] = useState('');
+  const [floorPlan2, setFloorPlan2] = useState('');
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.title || !formData.date) return;
+
+    // Filter out empty strings
+    const floorPlanImages = [floorPlan1, floorPlan2].filter(url => url.trim() !== '');
+
+    const newEvent: EventData = {
+      id: `evt-${Date.now()}`,
+      title: formData.title,
+      date: formData.date,
+      description: formData.description || '',
+      longDescription: formData.longDescription || '',
+      imageUrl: formData.imageUrl || 'https://picsum.photos/800/400',
+      floorPlanImages: floorPlanImages,
+      tables: [], // Starts with no tables, add them later
+      isHidden: false
+    };
+
+    onSave(newEvent);
+    navigate('/');
+  };
+
+  return (
+    <div className="max-w-2xl mx-auto bg-gray-900 p-8 rounded-xl shadow-lg border border-gray-800">
+      <h2 className="text-2xl font-bold mb-6 text-white">Kreiraj Novi Događaj</h2>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <Input 
+          label="Naziv Događaja" 
+          value={formData.title} 
+          onChange={e => setFormData({...formData, title: e.target.value})} 
+          required 
+        />
+        <Input 
+          label="Datum i Vrijeme" 
+          type="datetime-local"
+          value={formData.date} 
+          onChange={e => setFormData({...formData, date: e.target.value})} 
+          required 
+          className="text-gray-900 dark:text-white"
+        />
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-300 mb-1">Kratki Opis (Početna stranica)</label>
+          <textarea 
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-500" 
+            rows={2}
+            value={formData.description}
+            onChange={e => setFormData({...formData, description: e.target.value})}
+            placeholder="Kratki sažetak koji će se vidjeti na kartici događaja..."
+          />
+        </div>
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-300 mb-1">Detaljni Opis (Vidi se na gumb 'VIŠE INFORMACIJA')</label>
+          <textarea 
+            className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-500" 
+            rows={5}
+            value={formData.longDescription}
+            onChange={e => setFormData({...formData, longDescription: e.target.value})}
+            placeholder="Sve detalje o događaju upišite ovdje..."
+          />
+        </div>
+        <Input 
+          label="URL Naslovne Slike" 
+          value={formData.imageUrl} 
+          onChange={e => setFormData({...formData, imageUrl: e.target.value})} 
+          placeholder="https://..."
+        />
+        
+        <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700 space-y-4">
+           <h3 className="text-sm font-bold text-gray-200 flex items-center gap-2">
+             <MapIcon className="w-4 h-4" /> Postavke Plana Stolova
+           </h3>
+           <Input 
+            label="Plan stolova (Slika 1 URL)" 
+            value={floorPlan1} 
+            onChange={e => setFloorPlan1(e.target.value)} 
+            placeholder="https://..."
+            icon={<ImageIcon className="w-4 h-4"/>}
+          />
+          <Input 
+            label="Plan stolova (Slika 2 URL - opcionalno)" 
+            value={floorPlan2} 
+            onChange={e => setFloorPlan2(e.target.value)} 
+            placeholder="https://..."
+            icon={<ImageIcon className="w-4 h-4"/>}
+          />
+        </div>
+
+        <div className="flex gap-4 pt-4">
+          <Button type="button" variant="secondary" onClick={() => navigate('/')} className="flex-1">Odustani</Button>
+          <Button type="submit" className="flex-1">Kreiraj Događaj</Button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+// 4. Table Component
+const TableCard = ({ 
+  table, 
+  onClick 
+}: { 
+  table: Table, 
+  onClick: (t: Table) => void 
+}) => {
+  const isReserved = table.status === TableStatus.RESERVED;
+  
+  return (
+    <button
+      onClick={() => onClick(table)}
+      className={`
+        relative flex flex-col items-center justify-center p-6 rounded-xl border transition-all duration-200 w-full aspect-square
+        ${isReserved 
+          ? 'bg-gray-900/50 border-gray-800 text-gray-500 cursor-pointer hover:bg-gray-900' 
+          : 'bg-gray-800 border-green-500/50 text-white shadow-lg shadow-black/20 hover:shadow-green-500/10 hover:border-green-500 hover:scale-105 cursor-pointer'}
+      `}
+    >
+      <div className={`
+        mb-3 p-3 rounded-full 
+        ${isReserved ? 'bg-gray-800 text-gray-600' : 'bg-green-500/10 text-green-400'}
+      `}>
+        {isReserved ? <Lock className="w-6 h-6" /> : <Users className="w-6 h-6" />}
+      </div>
+      <h4 className="font-bold text-lg text-center">{table.name}</h4>
+      <span className={`
+        text-xs uppercase tracking-wider font-semibold mt-1
+        ${isReserved ? 'text-red-900' : 'text-green-500'}
+      `}>
+        {isReserved ? 'Rezervirano' : 'Slobodno'}
+      </span>
+    </button>
+  );
+};
+
+// 5. Modals
+
+// Floor Plan Modal
+const FloorPlanModal = ({
+  isOpen,
+  onClose,
+  images
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  images?: string[];
+}) => {
+  if (!isOpen || !images || images.length === 0) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <button 
+        onClick={onClose}
+        className="absolute top-4 right-4 text-white hover:text-gray-300 z-50 p-2 bg-black/50 rounded-full"
+      >
+        <XCircle className="w-8 h-8" />
+      </button>
+      
+      <div 
+        className="max-w-7xl w-full max-h-[90vh] flex flex-col md:flex-row gap-4 items-center justify-center overflow-auto p-4"
+        onClick={e => e.stopPropagation()} 
+      >
+        {images.map((imgUrl, index) => (
+          <div key={index} className="relative flex-1 min-w-0 flex items-center justify-center h-full w-full">
+            <img 
+              src={imgUrl} 
+              alt={`Plan stolova ${index + 1}`} 
+              className="max-h-[85vh] w-auto max-w-full object-contain rounded-lg shadow-2xl border border-gray-800"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// Edit Event Modal
+const EditEventModal = ({ 
+  event, 
+  isOpen, 
+  onClose, 
+  onSave 
+}: { 
+  event: EventData, 
+  isOpen: boolean, 
+  onClose: () => void, 
+  onSave: (updatedEvent: EventData) => void 
+}) => {
+  const [formData, setFormData] = useState<Partial<EventData>>({});
+  const [floorPlan1, setFloorPlan1] = useState('');
+  const [floorPlan2, setFloorPlan2] = useState('');
+
+  useEffect(() => {
+    if (event) {
+      setFormData({
+        title: event.title,
+        date: event.date,
+        description: event.description,
+        longDescription: event.longDescription,
+        imageUrl: event.imageUrl
+      });
+      // Load existing floor plan images
+      setFloorPlan1(event.floorPlanImages?.[0] || '');
+      setFloorPlan2(event.floorPlanImages?.[1] || '');
+    }
+  }, [event, isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (formData.title && formData.date) {
+      const floorPlanImages = [floorPlan1, floorPlan2].filter(url => url.trim() !== '');
+      onSave({ ...event, ...formData, floorPlanImages } as EventData);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-fade-in-up flex flex-col max-h-[90vh]">
+        <div className="bg-indigo-600 p-6 text-white flex justify-between items-center">
+          <div>
+            <h3 className="text-xl font-bold flex items-center gap-2">
+              <Edit className="w-5 h-5" /> Uredi Događaj
+            </h3>
+            <p className="text-indigo-100 text-sm mt-1">Ažurirajte detalje događaja.</p>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white">
+            <XCircle className="w-6 h-6" />
+          </button>
+        </div>
+        
+        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto">
+          <div className="space-y-4">
+            <Input 
+              label="Naziv Događaja" 
+              value={formData.title || ''} 
+              onChange={e => setFormData({...formData, title: e.target.value})} 
+              required 
+            />
+            <Input 
+              label="Datum i Vrijeme" 
+              type="datetime-local"
+              value={formData.date || ''} 
+              onChange={e => setFormData({...formData, date: e.target.value})} 
+              required 
+              className="text-gray-900 dark:text-white"
+            />
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-1">Kratki Opis (Početna stranica)</label>
+              <textarea 
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-500" 
+                rows={2}
+                value={formData.description || ''}
+                onChange={e => setFormData({...formData, description: e.target.value})}
+              />
+            </div>
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-300 mb-1">Detaljni Opis</label>
+              <textarea 
+                className="w-full px-3 py-2 bg-gray-800 border border-gray-700 text-white rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 placeholder-gray-500" 
+                rows={5}
+                value={formData.longDescription || ''}
+                onChange={e => setFormData({...formData, longDescription: e.target.value})}
+              />
+            </div>
+            <Input 
+              label="URL Naslovne Slike" 
+              value={formData.imageUrl || ''} 
+              onChange={e => setFormData({...formData, imageUrl: e.target.value})} 
+            />
+
+            <div className="p-4 bg-gray-800/50 rounded-lg border border-gray-700 space-y-4 mt-4">
+               <h3 className="text-sm font-bold text-gray-200 flex items-center gap-2">
+                 <MapIcon className="w-4 h-4" /> Postavke Plana Stolova
+               </h3>
+               <Input 
+                label="Plan stolova (Slika 1 URL)" 
+                value={floorPlan1} 
+                onChange={e => setFloorPlan1(e.target.value)} 
+                placeholder="https://..."
+                icon={<ImageIcon className="w-4 h-4"/>}
+              />
+              <Input 
+                label="Plan stolova (Slika 2 URL - opcionalno)" 
+                value={floorPlan2} 
+                onChange={e => setFloorPlan2(e.target.value)} 
+                placeholder="https://..."
+                icon={<ImageIcon className="w-4 h-4"/>}
+              />
+            </div>
+          </div>
+          
+          <div className="mt-6 flex gap-3 pt-4 border-t border-gray-800">
+            <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Odustani</Button>
+            <Button type="submit" className="flex-1">Spremi Promjene</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Description Info Modal
+const EventInfoModal = ({
+  isOpen,
+  onClose,
+  title,
+  description
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  description?: string;
+}) => {
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-lg p-6 animate-fade-in-up relative">
+        <button 
+          onClick={onClose}
+          className="absolute top-4 right-4 text-gray-400 hover:text-white"
+        >
+          <XCircle className="w-6 h-6" />
+        </button>
+        <div className="flex items-center gap-3 mb-4 text-indigo-400">
+          <Info className="w-6 h-6" />
+          <h3 className="text-xl font-bold text-white">Informacije o događaju</h3>
+        </div>
+        <h4 className="text-lg font-semibold text-gray-200 mb-4 border-b border-gray-800 pb-2">{title}</h4>
+        <div className="text-gray-300 leading-relaxed whitespace-pre-wrap max-h-[60vh] overflow-y-auto pr-2">
+          {description || "Nema dodatnih informacija za ovaj događaj."}
+        </div>
+        <div className="mt-6">
+          <Button onClick={onClose} variant="secondary" className="w-full">Zatvori</Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Reservation Modal (User)
+const ReserveModal = ({ 
+  table, 
+  isOpen, 
+  onClose, 
+  onConfirm 
+}: { 
+  table: Table | null, 
+  isOpen: boolean, 
+  onClose: () => void, 
+  onConfirm: (data: Reservation) => void 
+}) => {
+  const [data, setData] = useState<Reservation>({ firstName: '', lastName: '', phone: '', password: '' });
+
+  if (!isOpen || !table) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    onConfirm(data);
+    setData({ firstName: '', lastName: '', phone: '', password: '' }); // Reset
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-fade-in-up">
+        <div className="bg-indigo-600 p-6 text-white">
+          <h3 className="text-xl font-bold">Rezerviraj {table.name}</h3>
+          <p className="text-indigo-100 text-sm mt-1">Molimo unesite svoje podatke za rezervaciju stola.</p>
+        </div>
+        <form onSubmit={handleSubmit} className="p-6">
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Ime" required value={data.firstName} onChange={e => setData({...data, firstName: e.target.value})} />
+            <Input label="Prezime" required value={data.lastName} onChange={e => setData({...data, lastName: e.target.value})} />
+          </div>
+          <Input label="Broj Telefona" type="tel" required value={data.phone} onChange={e => setData({...data, phone: e.target.value})} icon={<Phone className="w-4 h-4"/>} />
+          <Input label="Kreirajte Lozinku za Otkazivanje" type="password" required value={data.password} onChange={e => setData({...data, password: e.target.value})} placeholder="Čuvajte ovo na sigurnom!" />
+          
+          <div className="mt-6 flex gap-3">
+            <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Odustani</Button>
+            <Button type="submit" className="flex-1">Potvrdi Rezervaciju</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Cancel Modal (User)
+const CancelModal = ({ 
+  table, 
+  isOpen, 
+  onClose, 
+  onConfirm 
+}: { 
+  table: Table | null, 
+  isOpen: boolean, 
+  onClose: () => void, 
+  onConfirm: () => void 
+}) => {
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  if (!isOpen || !table) return null;
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (table.reservation?.password === password) {
+      onConfirm();
+      setPassword('');
+      setError('');
+    } else {
+      setError('Netočna lozinka.');
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <h3 className="text-xl font-bold text-white mb-2">Otkaži Rezervaciju</h3>
+        <p className="text-gray-400 mb-6">Unesite lozinku korištenu prilikom rezervacije za oslobađanje <strong>{table.name}</strong>.</p>
+        
+        <form onSubmit={handleSubmit}>
+          <Input 
+            type="password" 
+            placeholder="Unesite lozinku" 
+            value={password} 
+            onChange={e => setPassword(e.target.value)} 
+          />
+          {error && <p className="text-red-400 text-sm mb-4">{error}</p>}
+          
+          <div className="flex gap-3">
+            <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Zatvori</Button>
+            <Button type="submit" variant="danger" className="flex-1">Otkaži Rezervaciju</Button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// Admin Info Modal
+const AdminInfoModal = ({ 
+  table, 
+  isOpen, 
+  onClose, 
+  onDelete 
+}: { 
+  table: Table | null, 
+  isOpen: boolean, 
+  onClose: () => void, 
+  onDelete: () => void 
+}) => {
+  if (!isOpen || !table || !table.reservation) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-gray-900 border border-gray-800 rounded-2xl shadow-2xl w-full max-w-md p-6">
+        <div className="flex justify-between items-start mb-4">
+          <h3 className="text-xl font-bold text-white">Detalji Rezervacije</h3>
+          <span className="bg-indigo-900/50 border border-indigo-500/30 text-indigo-300 text-xs px-2 py-1 rounded">{table.name}</span>
+        </div>
+        
+        <div className="space-y-4 mb-8">
+          <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg border border-gray-700">
+            <User className="text-gray-400 w-5 h-5" />
+            <div>
+              <p className="text-xs text-gray-500">Ime Gosta</p>
+              <p className="font-medium text-gray-200">{table.reservation.firstName} {table.reservation.lastName}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-gray-800 rounded-lg border border-gray-700">
+            <Phone className="text-gray-400 w-5 h-5" />
+            <div>
+              <p className="text-xs text-gray-500">Kontakt</p>
+              <p className="font-medium text-gray-200">{table.reservation.phone}</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 p-3 bg-red-900/20 rounded-lg border border-red-900/30">
+            <Lock className="text-red-400 w-5 h-5" />
+            <div>
+              <p className="text-xs text-red-400">Lozinka Korisnika (Admin Prikaz)</p>
+              <p className="font-mono text-red-300">{table.reservation.password}</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-3">
+          <Button type="button" variant="secondary" onClick={onClose} className="flex-1">Zatvori</Button>
+          <Button type="button" variant="danger" onClick={onDelete} className="flex-1">
+            <Trash2 className="w-4 h-4" /> Poništi Rezervaciju
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// 6. Event Detail Page (Combined User/Admin Logic)
+const EventDetailPage = ({ 
+  events, 
+  isAdmin, 
+  updateEvent 
+}: { 
+  events: EventData[], 
+  isAdmin: boolean, 
+  updateEvent: (e: EventData) => void 
+}) => {
+  const { id } = useParams();
+  const event = events.find(e => e.id === id);
+  const navigate = useNavigate();
+
+  // Modal States
+  const [selectedTable, setSelectedTable] = useState<Table | null>(null);
+  const [showReserveModal, setShowReserveModal] = useState(false);
+  const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showAdminModal, setShowAdminModal] = useState(false);
+  const [showInfoModal, setShowInfoModal] = useState(false);
+  const [showEditEventModal, setShowEditEventModal] = useState(false);
+  const [showFloorPlanModal, setShowFloorPlanModal] = useState(false);
+
+  // Admin: New Table Input
+  const [newTableName, setNewTableName] = useState('');
+
+  if (!event) return <div className="text-center py-20 text-gray-500">Događaj nije pronađen</div>;
+
+  // Sorting Logic: 
+  // 1. Free tables first, Reserved tables last
+  // 2. Among free tables: tables starting with "VIP" first
+  // 3. Fallback to name sort
+  const sortedTables = useMemo(() => {
+    return [...event.tables].sort((a, b) => {
+      // 1. Priority: Free vs Reserved
+      if (a.status === TableStatus.FREE && b.status === TableStatus.RESERVED) return -1;
+      if (a.status === TableStatus.RESERVED && b.status === TableStatus.FREE) return 1;
+
+      // 2. Priority: VIP (Only needed if both are FREE, but safe to do globally if VIP is preferred)
+      if (a.status === TableStatus.FREE && b.status === TableStatus.FREE) {
+        const aIsVip = a.name.trim().toUpperCase().startsWith('VIP');
+        const bIsVip = b.name.trim().toUpperCase().startsWith('VIP');
+
+        if (aIsVip && !bIsVip) return -1;
+        if (!aIsVip && bIsVip) return 1;
+      }
+
+      // 3. Priority: Name (Alphabetical/Natural sort)
+      return a.name.localeCompare(b.name, undefined, { numeric: true });
+    });
+  }, [event.tables]);
+
+  const handleTableClick = (table: Table) => {
+    setSelectedTable(table);
+    if (table.status === TableStatus.FREE) {
+      if (!isAdmin) setShowReserveModal(true);
+    } else {
+      if (isAdmin) {
+        setShowAdminModal(true);
+      } else {
+        setShowCancelModal(true);
+      }
+    }
+  };
+
+  const handleReserve = (data: Reservation) => {
+    if (!selectedTable) return;
+    const updatedTables = event.tables.map(t => 
+      t.id === selectedTable.id 
+        ? { ...t, status: TableStatus.RESERVED, reservation: data } 
+        : t
+    );
+    updateEvent({ ...event, tables: updatedTables });
+    setShowReserveModal(false);
+  };
+
+  const handleCancelReservation = () => {
+    if (!selectedTable) return;
+    const updatedTables = event.tables.map(t => 
+      t.id === selectedTable.id 
+        ? { ...t, status: TableStatus.FREE, reservation: undefined } 
+        : t
+    );
+    updateEvent({ ...event, tables: updatedTables });
+    setShowCancelModal(false);
+    setShowAdminModal(false);
+  };
+
+  const handleAddTable = () => {
+    if (!newTableName.trim()) return;
+    const newTable: Table = {
+      id: `tbl-${Date.now()}`,
+      name: newTableName,
+      status: TableStatus.FREE
+    };
+    updateEvent({ ...event, tables: [...event.tables, newTable] });
+    setNewTableName('');
+  };
+
+  const handleAdminDeleteTable = (tableId: string) => {
+    const updatedTables = event.tables.filter(t => t.id !== tableId);
+    updateEvent({ ...event, tables: updatedTables });
+  };
+
+  const handleUpdateEventDetails = (updatedEvent: EventData) => {
+    updateEvent(updatedEvent);
+    setShowEditEventModal(false);
+  };
+
+  const handleExportReservations = () => {
+    if (!event) return;
+
+    // Header for CSV
+    const headers = ['Naziv Stola', 'Ime', 'Prezime', 'Telefon', 'Lozinka (Korisnik)'];
+    
+    // Rows
+    const rows = event.tables
+      .filter(t => t.status === TableStatus.RESERVED && t.reservation)
+      .map(t => [
+        `"${t.name.replace(/"/g, '""')}"`, // Escape quotes
+        `"${t.reservation!.firstName.replace(/"/g, '""')}"`,
+        `"${t.reservation!.lastName.replace(/"/g, '""')}"`,
+        `"${t.reservation!.phone.replace(/"/g, '""')}"`,
+        `"${t.reservation!.password.replace(/"/g, '""')}"`
+      ]);
+
+    // Combine into CSV string with BOM for UTF-8 support (Croatian chars)
+    const csvContent = '\uFEFF' + [
+      headers.join(','), 
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    // Create Download Link
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `${event.title.replace(/[\s/]/g, '_')}_rezervacije.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const formatDate = (dateString: string) => {
+    const options: Intl.DateTimeFormatOptions = { 
+      weekday: 'long', 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    };
+    // Capitalize first letter of the result because toLocaleDateString might return lowercase
+    const date = new Date(dateString).toLocaleDateString('hr-HR', options);
+    return date.charAt(0).toUpperCase() + date.slice(1);
+  };
+
+  return (
+    <div>
+      <div className="mb-6">
+        <Button variant="secondary" onClick={() => navigate('/')} className="mb-4">
+          <ArrowLeft className="w-4 h-4" /> Natrag na Događaje
+        </Button>
+        
+        <div className="relative w-full max-w-lg mx-auto rounded-2xl overflow-hidden shadow-2xl border border-gray-800 mb-8">
+           <img src={event.imageUrl} alt={event.title} className="w-full h-auto block" />
+           <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/50 to-transparent flex items-end">
+             <div className="p-6 text-white w-full">
+                <h1 className="text-2xl font-bold mb-2 text-white drop-shadow-md">{event.title}</h1>
+                <div className="flex flex-col gap-1 text-gray-300 text-sm mb-3">
+                  <div className="flex items-center gap-2">
+                     <Calendar className="w-4 h-4 text-indigo-400" />
+                     <span>{formatDate(event.date)}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                     <Clock className="w-4 h-4 text-indigo-400" />
+                     <span>{new Date(event.date).toLocaleTimeString('hr-HR', {hour: '2-digit', minute:'2-digit'})} sati</span>
+                  </div>
+                </div>
+                
+                <div className="flex gap-2">
+                   <Button 
+                    onClick={() => setShowInfoModal(true)}
+                    className="flex-1 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-semibold"
+                   >
+                    <FileText className="w-4 h-4" /> VIŠE INFORMACIJA
+                   </Button>
+                </div>
+             </div>
+           </div>
+        </div>
+
+        {/* Admin Controls Section */}
+        {isAdmin && (
+          <div className="bg-gray-900 border border-indigo-500/30 p-6 rounded-xl mb-8 shadow-lg shadow-indigo-900/10">
+            <h3 className="text-indigo-400 font-bold flex items-center gap-2 mb-4">
+              <ShieldCheck className="w-5 h-5" /> Admin Prilagodba Stranice
+            </h3>
+            
+            <div className="mb-6 flex flex-wrap gap-2">
+               <Button onClick={() => setShowEditEventModal(true)} variant="secondary" className="w-full md:w-auto">
+                 <Edit className="w-4 h-4" /> Uredi Informacije Događaja
+               </Button>
+               <Button onClick={handleExportReservations} variant="outline" className="w-full md:w-auto text-green-400 border-green-800 hover:bg-green-900/20">
+                 <Download className="w-4 h-4" /> Preuzmi Popis Rezervacija
+               </Button>
+            </div>
+
+            <div className="flex gap-4 items-end">
+              <div className="flex-grow">
+                <label className="text-sm text-gray-400 font-medium mb-1 block">Dodaj Novi Stol</label>
+                <div className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={newTableName}
+                    onChange={(e) => setNewTableName(e.target.value)}
+                    placeholder="npr. 'VIP Loža 3' ili 'Stol 12'"
+                    className="flex-grow px-4 py-2 bg-gray-800 border border-gray-700 text-white rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 placeholder-gray-600"
+                  />
+                  <Button onClick={handleAddTable}>Dodaj</Button>
+                </div>
+              </div>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              * Kliknite na rezervirane stolove za info o gostu. Kliknite 'X' na slobodne stolove za brisanje.
+            </p>
+          </div>
+        )}
+
+        <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+          <h2 className="text-2xl font-bold text-white">Raspored Stolova</h2>
+          {event.floorPlanImages && event.floorPlanImages.length > 0 && (
+            <Button 
+              onClick={() => setShowFloorPlanModal(true)}
+              className="bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-500/30 px-6 py-3 rounded-xl font-bold text-lg animate-pulse hover:animate-none transform hover:scale-105 transition-all w-full md:w-auto"
+            >
+              <MapIcon className="w-6 h-6 mr-2" /> PRIKAŽI PLAN STOLOVA
             </Button>
           )}
         </div>
-      </div>
-    </nav>
-    <main className="flex-grow max-w-7xl w-full mx-auto px-4 py-10">{children}</main>
-    <footer className="border-t border-gray-900 py-10 text-center text-gray-600 text-xs font-bold uppercase tracking-widest">© 2025 CityWave. Your City, Your Wave.</footer>
-  </div>
-);
-
-// --- Modals ---
-
-const EditEventModal = ({ isOpen, onClose, event, onSave }: any) => {
-  const [f, setF] = useState<any>(null);
-  
-  useEffect(() => {
-    if (event && isOpen) setF({ ...event });
-  }, [event, isOpen]);
-
-  if (!isOpen || !f) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/95 backdrop-blur-lg flex items-center justify-center z-[200] p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl max-h-[90vh] overflow-y-auto p-10 shadow-2xl space-y-6">
-        <div className="flex justify-between items-center mb-4">
-          <h2 className="text-3xl font-black text-white uppercase tracking-tight">Uredi Događaj</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors"><XCircle className="w-8 h-8"/></button>
-        </div>
-        <Input label="Naziv" value={f.title} onChange={e => setF({...f, title: e.target.value})} />
-        <Input label="Datum" type="datetime-local" value={f.date} onChange={e => setF({...f, date: e.target.value})} />
-        <Input label="URL Slike" value={f.imageUrl} onChange={e => setF({...f, imageUrl: e.target.value})} />
-        <div className="grid grid-cols-2 gap-4">
-          <Input label="Min. Serijski" type="number" value={f.minTicketSerial} onChange={e => setF({...f, minTicketSerial: parseInt(e.target.value)})} />
-          <Input label="Max. Serijski" type="number" value={f.maxTicketSerial} onChange={e => setF({...f, maxTicketSerial: parseInt(e.target.value)})} />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Kratki Opis</label>
-          <textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white focus:ring-2 focus:ring-indigo-500" rows={2} value={f.description} onChange={e => setF({...f, description: e.target.value})} />
-        </div>
-        <div className="space-y-1">
-          <label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Detalji</label>
-          <textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white focus:ring-2 focus:ring-indigo-500" rows={4} value={f.longDescription} onChange={e => setF({...f, longDescription: e.target.value})} />
-        </div>
-        <div className="flex gap-4 pt-4">
-          <Button variant="secondary" onClick={onClose} className="flex-1 h-14 rounded-2xl">Odustani</Button>
-          <Button variant="primary" onClick={() => { onSave(f); onClose(); }} className="flex-1 h-14 rounded-2xl">Spremi</Button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-const AdminTableDetailModal = ({ isOpen, onClose, table, onRelease }: any) => {
-  if (!isOpen || !table || !table.reservation) return null;
-  const res = table.reservation;
-
-  return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[250] p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-md p-10 shadow-2xl space-y-8">
-        <div className="flex justify-between items-center">
-          <h2 className="text-2xl font-black text-white uppercase">Stol: {table.name}</h2>
-          <button onClick={onClose} className="text-gray-500 hover:text-white"><XCircle /></button>
-        </div>
-        <div className="space-y-4">
-          <div className="p-4 bg-gray-800/50 rounded-2xl border border-gray-700">
-            <p className="text-[10px] font-black text-indigo-500 uppercase mb-1">Gost</p>
-            <p className="text-white font-bold text-lg">{res.firstName} {res.lastName}</p>
-          </div>
-          <div className="p-4 bg-gray-800/50 rounded-2xl border border-gray-700">
-            <p className="text-[10px] font-black text-indigo-500 uppercase mb-1">Kontakt</p>
-            <p className="text-white font-bold">{res.phone}</p>
-          </div>
-          <div className="p-4 bg-gray-800/50 rounded-2xl border border-gray-700">
-            <p className="text-[10px] font-black text-red-500 uppercase mb-1">Lozinka Gosta</p>
-            <p className="text-white font-mono font-black">{res.password}</p>
-          </div>
-        </div>
-        <div className="flex flex-col gap-3">
-          <Button variant="danger" onClick={() => { if(window.confirm('Osloboditi stol?')) { onRelease(); onClose(); } }} className="w-full h-14 rounded-2xl font-black">OSLOBODI STOL</Button>
-          <Button variant="secondary" onClick={onClose} className="w-full rounded-2xl">Zatvori</Button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- Views ---
-
-const HomePage = ({ events, currentAdmin, onDeleteEvents, onToggleVisibility }: any) => {
-  const navigate = useNavigate();
-  const isAdmin = !!currentAdmin;
-  const visibleEvents = events.filter((e: any) => isAdmin || !e.isHidden);
-
-  return (
-    <div className="space-y-12">
-      <div className="flex flex-col md:flex-row justify-between items-end gap-6">
-        <div className="text-left">
-          <h1 className="text-6xl font-black text-white tracking-tighter mb-2 uppercase">CityWave <span className="text-indigo-600">Events.</span></h1>
-          <p className="text-gray-500 font-bold uppercase tracking-widest text-xs">Vrhunska organizacija tvojih događaja</p>
-        </div>
-        {isAdmin && (
-          <Link to="/admin/create">
-            <Button className="h-14 px-8 text-lg rounded-2xl shadow-indigo-500/30"><Plus className="w-6 h-6" /> Novi Događaj</Button>
-          </Link>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
-        {visibleEvents.map((event: any) => {
-          const isOwner = currentAdmin?.isMain || currentAdmin?.username === event.ownerId;
-          const isHidden = !!event.isHidden;
-          return (
-            <div key={event.id} onClick={() => navigate(`/event/${event.id}`)} className={`group relative bg-gray-900 rounded-[2.5rem] border border-gray-800 overflow-hidden cursor-pointer transition-all hover:border-indigo-500/50 hover:-translate-y-2 ${isHidden ? 'opacity-50 grayscale' : ''}`}>
-              <div className="aspect-[4/3] overflow-hidden bg-gray-800">
-                <img src={event.imageUrl} className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-700" alt={event.title} />
-              </div>
-              <div className="p-8 text-left">
-                <div className="flex justify-between items-start mb-4">
-                  <h3 className="text-2xl font-black text-white leading-tight pr-4">{event.title}</h3>
-                  {isAdmin && isOwner && <span className="shrink-0 bg-indigo-600 text-[10px] font-black px-2 py-1 rounded text-white uppercase">Control</span>}
-                </div>
-                <p className="text-gray-500 font-medium line-clamp-2 mb-6">{event.description}</p>
-                <div className="flex items-center justify-between text-[11px] font-black text-gray-400 uppercase tracking-widest">
-                  <div className="flex items-center gap-1"><Calendar className="w-3 h-3 text-indigo-500" /> {new Date(event.date).toLocaleDateString('hr-HR')}</div>
-                  <div className="flex items-center gap-1"><Clock className="w-3 h-3 text-indigo-500" /> {new Date(event.date).toLocaleTimeString('hr-HR', {hour:'2-digit', minute:'2-digit'})}</div>
-                </div>
-              </div>
-              {isAdmin && isOwner && (
-                <div className="absolute top-4 right-4 flex gap-2">
-                   <button onClick={(e) => { e.stopPropagation(); onToggleVisibility(event.id); }} className="p-3 bg-black/60 backdrop-blur-md rounded-2xl text-white border border-white/10 hover:bg-indigo-600 transition-all">
-                     {isHidden ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                   </button>
-                   <button onClick={(e) => { e.stopPropagation(); if(window.confirm('Obrisati ovaj event?')) onDeleteEvents([event.id]); }} className="p-3 bg-red-600/80 backdrop-blur-md rounded-2xl text-white border border-red-500 hover:bg-red-500 transition-all">
-                     <Trash2 className="w-5 h-5" />
-                   </button>
-                </div>
-              )}
+        
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+          {sortedTables.length === 0 ? (
+            <div className="col-span-full text-center py-10 bg-gray-900 rounded-lg border-2 border-dashed border-gray-800 text-gray-600">
+              Nema dostupnih stolova. {isAdmin && "Dodajte ih iznad!"}
             </div>
-          );
-        })}
+          ) : (
+            sortedTables.map(table => (
+              <div key={table.id} className="relative group">
+                <TableCard 
+                  table={table} 
+                  onClick={handleTableClick} 
+                />
+                {isAdmin && table.status === TableStatus.FREE && (
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); handleAdminDeleteTable(table.id); }}
+                    className="absolute -top-2 -right-2 bg-red-900 text-red-200 rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity shadow-sm border border-red-500 hover:bg-red-800"
+                    title="Obriši Stol"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
       </div>
+
+      <ReserveModal 
+        isOpen={showReserveModal} 
+        table={selectedTable} 
+        onClose={() => setShowReserveModal(false)} 
+        onConfirm={handleReserve} 
+      />
+      
+      <CancelModal 
+        isOpen={showCancelModal} 
+        table={selectedTable} 
+        onClose={() => setShowCancelModal(false)} 
+        onConfirm={handleCancelReservation} 
+      />
+
+      <AdminInfoModal 
+        isOpen={showAdminModal} 
+        table={selectedTable} 
+        onClose={() => setShowAdminModal(false)} 
+        onDelete={handleCancelReservation} 
+      />
+
+      <EventInfoModal 
+        isOpen={showInfoModal}
+        onClose={() => setShowInfoModal(false)}
+        title={event.title}
+        description={event.longDescription}
+      />
+      
+      <EditEventModal 
+        isOpen={showEditEventModal}
+        event={event}
+        onClose={() => setShowEditEventModal(false)}
+        onSave={handleUpdateEventDetails}
+      />
+
+      <FloorPlanModal 
+        isOpen={showFloorPlanModal}
+        onClose={() => setShowFloorPlanModal(false)}
+        images={event.floorPlanImages}
+      />
     </div>
   );
 };
 
-const EventDetailPage = ({ events, currentAdmin, updateEvent }: any) => {
-  const { id } = useParams();
-  const navigate = useNavigate();
-  const event = events.find((e: any) => e.id === id);
-  const [newT, setNewT] = useState('');
-  const [showEdit, setShowEdit] = useState(false);
-  const [selectedTableInfo, setSelectedTableInfo] = useState<any>(null);
+// --- Main App Component ---
 
-  useEffect(() => {
-    if (!event) return;
-    const now = new Date();
-    let hasChanges = false;
-    const updatedTables = event.tables.map((t: Table) => {
-      if (t.status === TableStatus.RESERVED && t.reservation) {
-        const reservedDate = new Date(t.reservation.reservedAt);
-        const diffDays = (now.getTime() - reservedDate.getTime()) / (1000 * 60 * 60 * 24);
-        const serialsCount = t.reservation.ticketSerials?.length || 0;
-        if (diffDays > 5 && serialsCount < 4) {
-          hasChanges = true;
-          return { ...t, status: TableStatus.FREE, reservation: undefined };
-        }
-      }
-      return t;
-    });
-    if (hasChanges) updateEvent({ ...event, tables: updatedTables });
-  }, [event, updateEvent]);
+const App = () => {
+  // Global State
+  const [events, setEvents] = useStickyState<EventData[]>(INITIAL_EVENTS, 'citywave-events-v2');
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [showAdminLogin, setShowAdminLogin] = useState(false);
 
-  if (!event) return <div className="text-center py-40 font-black uppercase text-gray-500">Učitavanje...</div>;
+  // Actions
+  const handleAddEvent = (newEvent: EventData) => {
+    setEvents(prev => [...prev, newEvent]);
+  };
 
-  const isAdmin = !!currentAdmin;
-  const isOwner = currentAdmin?.isMain || currentAdmin?.username === event.ownerId;
+  const handleUpdateEvent = (updatedEvent: EventData) => {
+    setEvents(prev => prev.map(e => e.id === updatedEvent.id ? updatedEvent : e));
+  };
 
-  const handleTableAction = (t: Table) => {
-    if (isAdmin && isOwner && t.status === TableStatus.RESERVED) {
-      setSelectedTableInfo(t);
-    } else if (t.status === TableStatus.FREE && !isAdmin) {
-      const f = prompt('Vaše Ime:');
-      const l = prompt('Vaše Prezime:');
-      const ph = prompt('Kontakt Telefon:');
-      const p = prompt('Lozinka za upravljanje rezervacijom:');
-      if (f && l && ph && p) {
-        const newRes: Reservation = { 
-          firstName: f, 
-          lastName: l, 
-          phone: ph, 
-          password: p, 
-          reservedAt: new Date().toISOString(), 
-          ticketSerials: [] 
-        };
-        updateEvent({ ...event, tables: event.tables.map((x: any) => x.id === t.id ? { ...x, status: TableStatus.RESERVED, reservation: newRes } : x) });
-      }
-    } else if (t.status === TableStatus.RESERVED && !isAdmin) {
-      const pass = prompt('Lozinka:');
-      if (pass !== t.reservation?.password) { alert('Netočna lozinka'); return; }
-      const act = prompt('1 - Unesi serijske brojeve (4 kom)\n2 - Otkaži rezervaciju');
-      if (act === '1') {
-        const s = prompt('Unesite 4 serijska broja odvojena zarezom:');
-        if (s) {
-          const arr = s.split(',').map(n => parseInt(n.trim())).filter(x => !isNaN(x));
-          if (arr.length === 4 && arr.every(n => n >= event.minTicketSerial && n <= event.maxTicketSerial)) {
-            updateEvent({ ...event, tables: event.tables.map((x: any) => x.id === t.id ? { ...x, reservation: { ...x.reservation, ticketSerials: arr } } : x) });
-            alert('Serijski brojevi su uspješno uneseni!');
-          } else { alert(`Pogrešan unos ili raspon (Dopušteno: ${event.minTicketSerial}-${event.maxTicketSerial})`); }
-        }
-      } else if (act === '2') {
-        if (window.confirm('Sigurno želite otkazati?')) {
-          updateEvent({ ...event, tables: event.tables.map((x: any) => x.id === t.id ? { ...x, status: TableStatus.FREE, reservation: undefined } : x) });
-        }
-      }
+  const handleDeleteEvents = (eventIds: string[]) => {
+    setEvents(prev => prev.filter(e => !eventIds.includes(e.id)));
+  };
+  
+  const handleToggleVisibility = (eventId: string) => {
+    setEvents(prev => prev.map(e => 
+      e.id === eventId ? { ...e, isHidden: !e.isHidden } : e
+    ));
+  };
+
+  const handleAdminClick = () => {
+    if (isAdmin) {
+      setIsAdmin(false);
+    } else {
+      setShowAdminLogin(true);
     }
   };
 
-  return (
-    <div className="max-w-6xl mx-auto space-y-12">
-      <div className="flex justify-between items-center">
-        <Button variant="secondary" onClick={() => navigate('/')} className="rounded-xl px-5"><ArrowLeft className="w-4 h-4" /> Natrag</Button>
-        {isAdmin && isOwner && (
-          <Button variant="primary" onClick={() => setShowEdit(true)} className="h-12 px-6 rounded-xl"><Edit className="w-4 h-4" /> Uredi Podatke</Button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-12">
-        <div className="lg:col-span-5 space-y-8">
-           <div className="bg-gray-900 rounded-[3rem] border border-gray-800 overflow-hidden shadow-2xl">
-              <img src={event.imageUrl} className="w-full aspect-square object-cover" alt="" />
-              <div className="p-10 space-y-6 text-left">
-                 <h1 className="text-4xl font-black text-white uppercase leading-tight">{event.title}</h1>
-                 <p className="text-gray-400 font-medium text-lg leading-relaxed">{event.longDescription || event.description}</p>
-                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-800">
-                    <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700 text-center"><Calendar className="w-5 h-5 mx-auto mb-2 text-indigo-500"/><p className="text-xs font-black uppercase text-white">{new Date(event.date).toLocaleDateString('hr-HR')}</p></div>
-                    <div className="bg-gray-800/50 p-4 rounded-2xl border border-gray-700 text-center"><Clock className="w-5 h-5 mx-auto mb-2 text-indigo-500"/><p className="text-xs font-black uppercase text-white">{new Date(event.date).toLocaleTimeString('hr-HR', {hour:'2-digit', minute:'2-digit'})}</p></div>
-                 </div>
-              </div>
-           </div>
-        </div>
-        <div className="lg:col-span-7 space-y-10">
-           <div className="flex justify-between items-end border-b border-gray-800 pb-8 text-left">
-             <div>
-               <h2 className="text-3xl font-black text-white uppercase tracking-tighter">Rezervacija Stolova</h2>
-               <p className="text-xs text-indigo-500 font-black uppercase mt-1">Odaberi stol i prati upute</p>
-             </div>
-           </div>
-
-           <div className="bg-amber-600/10 p-4 rounded-2xl border border-amber-600/20 flex items-start gap-3">
-             <AlertTriangle className="text-amber-600 shrink-0 w-5 h-5" />
-             <p className="text-[10px] text-amber-600/90 font-black leading-tight uppercase">Važno: Rezervacija se automatski briše nakon 5 dana ako nisu uneseni serijski brojevi 4 ulaznice.</p>
-           </div>
-
-           {isAdmin && isOwner && (
-             <div className="flex gap-3 bg-indigo-600/5 p-6 rounded-3xl border border-indigo-600/10">
-                <input className="flex-1 bg-gray-900 border border-gray-800 rounded-2xl px-6 font-bold outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Naziv novog stola..." value={newT} onChange={e => setNewT(e.target.value)} />
-                <Button onClick={() => { if(newT){ updateEvent({...event, tables:[...event.tables, {id:`t-${Date.now()}`, name:newT, status:TableStatus.FREE}]}); setNewT(''); } }} className="rounded-2xl h-14 px-8"><Plus className="w-5 h-5"/> Dodaj</Button>
-             </div>
-           )}
-
-           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-5">
-              {event.tables.map((t: any) => {
-                const isRes = t.status === TableStatus.RESERVED;
-                const ok = t.reservation?.ticketSerials?.length === 4;
-                return (
-                  <button key={t.id} onClick={() => handleTableAction(t)} className={`aspect-square rounded-[2.5rem] border transition-all flex flex-col items-center justify-center p-6 ${isRes ? 'bg-gray-900 border-gray-800 opacity-60' : 'bg-gray-800 border-indigo-500/20 hover:border-indigo-500 hover:scale-105 shadow-xl shadow-black/40'}`}>
-                    <div className={`p-4 rounded-full mb-2 ${isRes ? 'bg-gray-800' : 'bg-indigo-500/10 text-indigo-400'}`}>
-                      {isRes ? (ok ? <CheckCircle className="w-7 h-7 text-emerald-500"/> : <Lock className="w-7 h-7 text-red-500"/>) : <Users className="w-7 h-7"/>}
-                    </div>
-                    <span className="text-xs font-black text-white uppercase truncate w-full text-center">{t.name}</span>
-                    <span className={`text-[9px] font-black uppercase mt-1 tracking-tighter ${isRes ? (ok ? 'text-emerald-500' : 'text-red-900') : 'text-emerald-500'}`}>
-                      {isRes ? (ok ? 'Potvrđeno' : 'Čeka karte') : 'Slobodno'}
-                    </span>
-                  </button>
-                );
-              })}
-           </div>
-        </div>
-      </div>
-      <EditEventModal isOpen={showEdit} onClose={() => setShowEdit(false)} event={event} onSave={updateEvent} />
-      <AdminTableDetailModal isOpen={!!selectedTableInfo} onClose={() => setSelectedTableInfo(null)} table={selectedTableInfo} onRelease={() => updateEvent({ ...event, tables: event.tables.map((x: any) => x.id === selectedTableInfo.id ? { ...x, status: TableStatus.FREE, reservation: undefined } : x) })} />
-    </div>
-  );
-};
-
-// --- Main Application ---
-
-const App = () => {
-  const [events, setEvents] = useState<EventData[]>([]);
-  const [admins, setAdmins] = useState<AdminUser[]>([]);
-  const [currentAdmin, setCurrentAdmin] = useState<AdminUser | null>(null);
-  const [showLogin, setShowLogin] = useState(false);
-  const [showMgmt, setShowMgmt] = useState(false);
-
-  useEffect(() => {
-    const unsubE = onSnapshot(collection(db, "events"), s => setEvents(s.docs.map(d => d.data() as EventData)));
-    const unsubA = onSnapshot(collection(db, "admins"), s => setAdmins(s.docs.map(d => d.data() as AdminUser)));
-    return () => { unsubE(); unsubA(); };
-  }, []);
-
-  const handleLogin = async (u: string, p: string) => {
-    if (u === 'admin' && p === '13377331LL') { 
-      setCurrentAdmin({id:'root', username:'admin', password:'***', isMain:true}); 
-      return true; 
+  const handleAdminLogin = (password: string) => {
+    // HARDCODED PASSWORD for simplicity
+    if (password === '13377331LL') {
+      setIsAdmin(true);
+      return true;
     }
-    const found = admins.find(a => a.username === u && a.password === p);
-    if (found) { setCurrentAdmin(found); return true; }
     return false;
   };
 
-  const updateEvt = async (e: EventData) => await setDoc(doc(db, "events", e.id), e);
-  const deleteEvts = async (ids: string[]) => { for(const id of ids) await deleteDoc(doc(db, "events", id)); };
-
   return (
     <HashRouter>
-      <Layout 
-        currentAdmin={currentAdmin} 
-        onLoginClick={() => setShowLogin(true)} 
-        onLogoutClick={() => setCurrentAdmin(null)}
-        onManageAdmins={() => setShowMgmt(true)}
-      >
+      <Layout isAdmin={isAdmin} onAdminClick={handleAdminClick}>
         <Routes>
           <Route path="/" element={
             <HomePage 
               events={events} 
-              currentAdmin={currentAdmin} 
-              onDeleteEvents={deleteEvts} 
-              onToggleVisibility={(id: string) => { 
-                const e = events.find(x => x.id === id); 
-                if(e) updateEvt({...e, isHidden: !e.isHidden}); 
-              }} 
+              isAdmin={isAdmin} 
+              onDeleteEvents={handleDeleteEvents} 
+              onToggleVisibility={handleToggleVisibility}
             />
           } />
-          <Route path="/admin/create" element={
-            currentAdmin ? (
-              <AdminCreate currentAdmin={currentAdmin} onSave={updateEvt} />
-            ) : (
-              <div className="text-center py-20 font-black uppercase text-gray-500">Pristup Odbijen</div>
-            )
+          <Route path="/admin/create" element={isAdmin ? <AdminEventForm onSave={handleAddEvent} /> : <div className="text-center text-red-500 mt-10">Pristup Odbijen. Prijavite se kao Admin.</div>} />
+          <Route path="/event/:id" element={
+            <EventDetailPage 
+              events={events} 
+              isAdmin={isAdmin} 
+              updateEvent={handleUpdateEvent} 
+            />
           } />
-          <Route path="/event/:id" element={<EventDetailPage events={events} currentAdmin={currentAdmin} updateEvent={updateEvt} />} />
         </Routes>
       </Layout>
-      <AdminLoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} onLogin={handleLogin} />
-      <AdminManagementModal 
-        isOpen={showMgmt} 
-        onClose={() => setShowMgmt(false)} 
-        currentAdmins={admins} 
-        onAddAdmin={async (u:string, p:string) => { 
-          const id = `adm-${Date.now()}`; 
-          await setDoc(doc(db, "admins", id), {id, username:u, password:p, isMain:false}); 
-        }} 
-        onDeleteAdmin={async (id:string) => await deleteDoc(doc(db, "admins", id))} 
+      
+      <AdminLoginModal 
+        isOpen={showAdminLogin} 
+        onClose={() => setShowAdminLogin(false)} 
+        onLogin={handleAdminLogin} 
       />
     </HashRouter>
-  );
-};
-
-// --- Internal Admin Modals ---
-
-const AdminLoginModal = ({ isOpen, onClose, onLogin }: any) => {
-  const [u, setU] = useState(''); const [p, setP] = useState(''); const [err, setErr] = useState('');
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl flex items-center justify-center z-[300] p-4">
-      <div className="bg-gray-900 p-12 rounded-[3rem] border border-gray-800 w-full max-w-md shadow-2xl">
-        <div className="flex flex-col items-center mb-10"><ShieldCheck className="w-14 h-14 text-indigo-500 mb-4" /><h2 className="text-3xl font-black text-white uppercase tracking-tighter">Admin Panel</h2></div>
-        <Input label="Korisničko Ime" value={u} onChange={e => setU(e.target.value)} icon={<User className="w-4 h-4"/>} />
-        <Input label="Lozinka" type="password" value={p} onChange={e => setP(e.target.value)} icon={<Lock className="w-4 h-4"/>} />
-        {err && <p className="text-red-500 text-xs font-black uppercase mb-4 text-center">{err}</p>}
-        <div className="flex gap-3"><Button variant="secondary" onClick={onClose} className="flex-1 rounded-2xl h-12">Zatvori</Button><Button onClick={async () => { if(await onLogin(u,p)) onClose(); else setErr('Greška u prijavi'); }} className="flex-1 rounded-2xl h-12">Prijava</Button></div>
-      </div>
-    </div>
-  );
-};
-
-const AdminManagementModal = ({ isOpen, onClose, currentAdmins, onAddAdmin, onDeleteAdmin }: any) => {
-  const [u, setU] = useState('');
-  const [p, setP] = useState('');
-  if (!isOpen) return null;
-  return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md flex items-center justify-center z-[200] p-4">
-      <div className="bg-gray-900 border border-gray-800 rounded-3xl w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-        <div className="p-8 border-b border-gray-800 flex justify-between items-center bg-indigo-600/5">
-          <div className="flex items-center gap-3"><Users className="text-indigo-400" /><h2 className="text-2xl font-black text-white uppercase tracking-tight">Admin Management</h2></div>
-          <button onClick={onClose} className="text-gray-500 hover:text-white transition-colors"><XCircle /></button>
-        </div>
-        <div className="p-10 overflow-y-auto space-y-12">
-          <section className="text-left">
-            <h3 className="text-[10px] font-black text-indigo-500 uppercase mb-4 tracking-widest">Novi Admin Račun</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-              <Input label="Username" placeholder="User" value={u} onChange={e => setU(e.target.value)} />
-              <Input label="Lozinka" placeholder="Pass" value={p} onChange={e => setP(e.target.value)} />
-              <Button variant="success" className="mb-4 h-12 rounded-xl" onClick={() => { if(u && p){ onAddAdmin(u,p); setU(''); setP(''); } }}><UserPlus className="w-4 h-4" /> Kreiraj</Button>
-            </div>
-          </section>
-          <section className="text-left">
-            <h3 className="text-[10px] font-black text-gray-500 uppercase mb-4 tracking-widest">Aktivni Administratori</h3>
-            <div className="space-y-4">
-              {currentAdmins.filter((a: any) => !a.isMain).map((admin: any) => (
-                <div key={admin.id} className="flex items-center justify-between p-5 bg-gray-800/40 rounded-3xl border border-gray-800">
-                  <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 flex items-center justify-center text-indigo-400 font-black">{admin.username[0].toUpperCase()}</div>
-                    <div><p className="font-black text-white">{admin.username}</p><p className="text-[10px] text-gray-500 font-mono tracking-widest uppercase">Pass: {admin.password}</p></div>
-                  </div>
-                  <button onClick={() => { if(window.confirm('Obrisati ovog admina?')) onDeleteAdmin(admin.id); }} className="p-3 text-red-500 hover:bg-red-500/10 rounded-2xl transition-all"><Trash2 className="w-5 h-5"/></button>
-                </div>
-              ))}
-              {currentAdmins.filter((a: any) => !a.isMain).length === 0 && (
-                <p className="text-center py-10 text-gray-600 font-black uppercase text-xs">Nema dodatnih administratora</p>
-              )}
-            </div>
-          </section>
-        </div>
-        <div className="p-8 bg-gray-900 border-t border-gray-800"><Button variant="secondary" onClick={onClose} className="w-full h-12 rounded-xl">Zatvori Panel</Button></div>
-      </div>
-    </div>
-  );
-};
-
-const AdminCreate = ({ currentAdmin, onSave }: any) => {
-  const [f, setF] = useState({ title:'', date:'', description:'', longDescription:'', imageUrl:'', minS: 0, maxS: 9999 });
-  const navigate = useNavigate();
-  return (
-    <div className="max-w-2xl mx-auto bg-gray-900 p-12 rounded-[3.5rem] border border-gray-800 shadow-2xl space-y-8 text-left">
-       <h2 className="text-4xl font-black text-white uppercase tracking-tighter mb-4">Novi <span className="text-indigo-600">Događaj</span></h2>
-       <Input label="Naziv" value={f.title} onChange={e => setF({...f, title:e.target.value})} />
-       <Input label="Datum i Vrijeme" type="datetime-local" value={f.date} onChange={e => setF({...f, date:e.target.value})} />
-       <Input label="URL Slike" value={f.imageUrl} onChange={e => setF({...f, imageUrl:e.target.value})} />
-       <div className="grid grid-cols-2 gap-4"><Input label="Min. Serial" type="number" value={f.minS} onChange={e => setF({...f, minS: parseInt(e.target.value)})} /><Input label="Max. Serial" type="number" value={f.maxS} onChange={e => setF({...f, maxS: parseInt(e.target.value)})} /></div>
-       <div className="space-y-1"><label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Kratki Opis</label><textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-medium focus:ring-2 focus:ring-indigo-500" rows={2} value={f.description} onChange={e => setF({...f, description:e.target.value})} /></div>
-       <div className="space-y-1"><label className="text-[10px] font-black text-gray-500 uppercase tracking-widest ml-1">Detaljni Opis</label><textarea className="w-full bg-gray-950 border border-gray-800 rounded-2xl p-4 text-white font-medium focus:ring-2 focus:ring-indigo-500" rows={4} value={f.longDescription} onChange={e => setF({...f, longDescription:e.target.value})} /></div>
-       <div className="flex gap-4 pt-4"><Button variant="secondary" onClick={() => navigate('/')} className="flex-1 rounded-2xl h-14">Odustani</Button><Button variant="primary" className="flex-1 rounded-2xl h-14" onClick={async () => { if(f.title && f.date){ await onSave({ ...f, id:`evt-${Date.now()}`, tables:[], ownerId:currentAdmin.username, minTicketSerial: f.minS, maxTicketSerial: f.maxS }); navigate('/'); } }}>Objavi</Button></div>
-    </div>
   );
 };
 
