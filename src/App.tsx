@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { HashRouter, Routes, Route, Link, useParams, useNavigate } from 'react-router-dom';
+// Changed to namespace import to fix missing exported member errors
+import * as Router from 'react-router-dom';
+const { HashRouter, Routes, Route, Link, useParams, useNavigate } = Router as any;
 import { 
   Calendar, 
   Plus, 
@@ -24,13 +26,15 @@ import {
 } from 'lucide-react';
 import { EventData, Table, TableStatus, Reservation, AdminUser } from './types';
 import { db } from './firebase';
-import { 
+// Changed to namespace import to fix missing exported member errors
+import * as firestoreModule from 'firebase/firestore';
+const { 
   collection, 
   onSnapshot, 
   doc, 
   setDoc, 
   deleteDoc
-} from 'firebase/firestore';
+} = firestoreModule as any;
 
 // --- Globalne Komponente ---
 
@@ -389,7 +393,7 @@ const EventDetailPage = ({ events, currentAdmin, updateEvent }: any) => {
 
           <div className="bg-yellow-500/10 p-4 rounded-2xl border border-yellow-500/20 flex items-start gap-3">
             <AlertTriangle className="text-yellow-500 shrink-0 w-5 h-5" />
-            <p className="text-xs text-yellow-500/80 font-bold leading-tight uppercase uppercase">Važno: Stol se automatski oslobađa nakon 5 dana ako nisu unijeta 4 serijska broja.</p>
+            <p className="text-xs text-yellow-500/80 font-bold leading-tight uppercase">Važno: Stol se automatski oslobađa nakon 5 dana ako nisu unijeta 4 serijska broja.</p>
           </div>
 
           {isAdmin && isOwner && (
@@ -442,8 +446,8 @@ const App = () => {
   const [showMgmt, setShowMgmt] = useState(false);
 
   useEffect(() => {
-    const unsubEvents = onSnapshot(collection(db, "events"), s => setEvents(s.docs.map(d => d.data() as EventData)));
-    const unsubAdmins = onSnapshot(collection(db, "admins"), s => setAdmins(s.docs.map(d => d.data() as AdminUser)));
+    const unsubEvents = onSnapshot(collection(db, "events"), (s: any) => setEvents(s.docs.map((d: any) => d.data() as EventData)));
+    const unsubAdmins = onSnapshot(collection(db, "admins"), (s: any) => setAdmins(s.docs.map((d: any) => d.data() as AdminUser)));
     return () => { unsubEvents(); unsubAdmins(); };
   }, []);
 

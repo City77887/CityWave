@@ -1,8 +1,13 @@
+
 import { EventData, TableStatus } from './types';
 
 export const INITIAL_EVENTS: EventData[] = [
   {
     id: 'evt-1',
+    // Added missing ownerId and serial range properties
+    ownerId: 'admin',
+    minTicketSerial: 1000,
+    maxTicketSerial: 9999,
     title: 'Neon Jazz Večeri',
     date: '2025-11-15T20:00',
     description: 'Doživite lagani ritam jazza pod neonskim svjetlima. Večer soula, saksofona i sofisticiranih pića.',
@@ -10,7 +15,8 @@ export const INITIAL_EVENTS: EventData[] = [
     imageUrl: 'https://picsum.photos/800/400?random=1',
     tables: [
       { id: 't-1', name: 'VIP 1', status: TableStatus.FREE },
-      { id: 't-2', name: 'VIP 2', status: TableStatus.RESERVED, reservation: { firstName: 'Ivan', lastName: 'Horvat', phone: '091-555-0199', password: 'tajnalozinka' } },
+      // Added missing reservedAt as required by Reservation
+      { id: 't-2', name: 'VIP 2', status: TableStatus.RESERVED, reservation: { firstName: 'Ivan', lastName: 'Horvat', phone: '091-555-0199', password: 'tajnalozinka', reservedAt: new Date().toISOString() } },
       { id: 't-3', name: 'Stol A', status: TableStatus.FREE },
       { id: 't-4', name: 'Stol B', status: TableStatus.FREE },
       { id: 't-5', name: 'Šank 1', status: TableStatus.FREE },
@@ -19,6 +25,10 @@ export const INITIAL_EVENTS: EventData[] = [
   },
   {
     id: 'evt-2',
+    // Added missing ownerId and serial range properties
+    ownerId: 'admin',
+    minTicketSerial: 1000,
+    maxTicketSerial: 9999,
     title: 'CityWave Techno Tulum',
     date: '2025-11-18T22:00',
     description: 'Najveći techno događaj godine. Visoka energija, duboki bas i nezaboravan light show.',
